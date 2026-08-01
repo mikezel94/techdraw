@@ -1,0 +1,8 @@
+node_modules
+dist
+
+# playwright artifacts
+test-results
+playwright-report
+blob-report
+.playwright
