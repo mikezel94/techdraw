@@ -18,6 +18,8 @@ export interface RectElement extends BaseElement {
   y: number;
   width: number;
   height: number;
+  text?: string;
+  color?: string;
 }
 
 export interface EllipseElement extends BaseElement {
@@ -26,6 +28,8 @@ export interface EllipseElement extends BaseElement {
   y: number;
   width: number;
   height: number;
+  text?: string;
+  color?: string;
 }
 
 export interface LineElement extends BaseElement {
@@ -59,15 +63,29 @@ export interface TextElement extends BaseElement {
   height: number;
 }
 
+export interface Anchor {
+  x: number;
+  y: number;
+  binding?: ArrowBinding;
+}
+
+export interface DimensionElement extends BaseElement {
+  type: 'dimension';
+  start: Anchor;
+  end: Anchor;
+  offset: number;
+}
+
 export type Element =
   | PencilElement
   | RectElement
   | EllipseElement
   | LineElement
   | ArrowElement
-  | TextElement;
+  | TextElement
+  | DimensionElement;
 
-export type Tool = 'select' | 'pencil' | 'rectangle' | 'ellipse' | 'line' | 'arrow' | 'text';
+export type Tool = 'select' | 'pencil' | 'rectangle' | 'ellipse' | 'line' | 'arrow' | 'text' | 'dimension';
 
 let idCounter = 0;
 

@@ -1,13 +1,14 @@
 import type { Tool } from '../types';
 
-const TOOLS: { id: Tool; label: string }[] = [
-  { id: 'select', label: 'Select' },
-  { id: 'pencil', label: 'Pencil' },
-  { id: 'rectangle', label: 'Rect' },
-  { id: 'ellipse', label: 'Ellipse' },
-  { id: 'line', label: 'Line' },
-  { id: 'arrow', label: 'Arrow' },
-  { id: 'text', label: 'Text' },
+const TOOLS: { id: Tool; label: string; title: string }[] = [
+  { id: 'select', label: 'Select', title: 'Select & Move (V)' },
+  { id: 'pencil', label: 'Pencil', title: 'Freehand draw (P)' },
+  { id: 'rectangle', label: 'Rect', title: 'Rectangle (R)' },
+  { id: 'ellipse', label: 'Ellipse', title: 'Ellipse (O)' },
+  { id: 'line', label: 'Line', title: 'Line (L)' },
+  { id: 'arrow', label: 'Arrow', title: 'Arrow (A)' },
+  { id: 'dimension', label: 'Dim', title: 'Dimension annotation (D)' },
+  { id: 'text', label: 'Text', title: 'Text (T)' },
 ];
 
 interface ToolbarProps {
@@ -36,6 +37,7 @@ export default function Toolbar({
           key={t.id}
           type="button"
           className={t.id === tool ? 'active' : ''}
+          title={t.title}
           onClick={() => onToolChange(t.id)}
         >
           {t.label}

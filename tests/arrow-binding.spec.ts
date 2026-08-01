@@ -64,8 +64,9 @@ test('arrow endpoint hints, snaps to a box, and follows it when moved', async ({
 
   // Select the arrow: its endpoint handle sits exactly on the snapped point
   // (300,240) — white handle fill there proves the endpoint snapped to the edge.
+  // The bound arrow renders as a bezier curve; its midpoint is near (375,280).
   await page.getByRole('button', { name: 'Select' }).click();
-  await page.mouse.click(360, 280);
+  await page.mouse.click(375, 280);
   await page.waitForTimeout(50);
   expect((await colorsNear(page, 300, 240, 1)).some(isWhite)).toBe(true);
 

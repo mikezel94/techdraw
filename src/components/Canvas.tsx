@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ArrowBinding, ArrowElement, Element, Point, Tool } from '../types';
 import { genId } from '../types';
+import type { Camera } from '../camera';
+import { screenToWorld, snapPointToGrid, getGridStep } from '../camera';
+import { drawDimension, hitDimension, bboxOfDimension, DIM_OFFSET } from '../dimensions';
 
 const STROKE = '#1e1e1e';
 const SELECT_COLOR = '#4a90d9';
@@ -11,28 +14,49 @@ const HANDLE_SIZE = 8;
 const HANDLE_HIT = 8;
 const CURVE_SAMPLES = 24;
 
+export interface ExtendPreview {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+}
+
 interface CanvasProps {
   elements: Element[];
   draft: Element | null;
   tool: Tool;
-  selectedId: string | null;
+  selectedIds: Set<string>;
+  camera: Camera;
+  gridEnabled: boolean;
+  snapEnabled: boolean;
+  gridSize: number;
+  spaceHeld: boolean;
+  extendPreview: ExtendPreview | null;
   onDraftChange: (draft: Element | null) => void;
   onCommit: (el: Element) => void;
-  onSelect: (id: string | null) => void;
-  onDragStart: (id: string) => void;
+  onSelect: (ids: Set<string>) => void;
+  onDragStart: (ids: string[]) => void;
   onDragMove: (dx: number, dy: number) => void;
   onDragEnd: (moved: boolean) => void;
   onEndpointDragMove: (id: string, end: 'start' | 'end', point: Point, binding: ArrowBinding | null) => void;
   onTextPlace: (x: number, y: number) => void;
+  onEditLabel: (shapeId: string, x: number, y: number) => void;
+  onCameraChange: (camera: Camera) => void;
 }
+
+// ---------------------------------------------------------------------------
+// Geometry helpers
+// ---------------------------------------------------------------------------
 
 function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
   const dx = x2 - x1;
   const dy = y2 - y1;
   const lengthSq = dx * dx + dy * dy;
-  if (lengthSq === 0) {
-    return Math.hypot(px - x1, py - y1);
-  }
+  if (lengthSq === 0) return Math.hypot(px - x1, py - y1);
   let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
@@ -46,11 +70,7 @@ function snapToShape(el: Element, px: number, py: number): Point | null {
   if (el.type === 'rect') {
     const cx = clamp(px, el.x, el.x + el.width);
     const cy = clamp(py, el.y, el.y + el.height);
-    if (cx !== px || cy !== py) {
-      // Outside the box: the clamped point lies on the border.
-      return { x: cx, y: cy };
-    }
-    // Inside the box: push to the nearest edge.
+    if (cx !== px || cy !== py) return { x: cx, y: cy };
     const dl = px - el.x;
     const dr = el.x + el.width - px;
     const dt = py - el.y;
@@ -95,8 +115,6 @@ function findSnapTarget(
   return null;
 }
 
-// Outward normal of the shape an arrow endpoint is bound to, or null when the
-// endpoint is free (unbound, or the bound shape no longer exists).
 function boundNormal(elements: Element[], el: ArrowElement, end: 'start' | 'end'): Point | null {
   const binding = end === 'start' ? el.startBinding : el.endBinding;
   if (!binding) return null;
@@ -130,9 +148,6 @@ interface ArrowControls {
   c2: Point;
 }
 
-// Cubic control points that make a bound arrow leave/arrive perpendicular to
-// its shapes, so the curve flexes as the shapes move. Returns null for a fully
-// unbound arrow, which is rendered straight.
 function arrowControls(elements: Element[], el: ArrowElement): ArrowControls | null {
   const n0 = boundNormal(elements, el, 'start');
   const n1 = boundNormal(elements, el, 'end');
@@ -161,6 +176,10 @@ function cubicPoint(p0: Point, c1: Point, c2: Point, p1: Point, t: number): Poin
   };
 }
 
+// ---------------------------------------------------------------------------
+// Hit testing
+// ---------------------------------------------------------------------------
+
 function hitElement(el: Element, x: number, y: number, elements: Element[]): boolean {
   switch (el.type) {
     case 'rect':
@@ -184,9 +203,7 @@ function hitElement(el: Element, x: number, y: number, elements: Element[]): boo
       let prev = p0;
       for (let i = 1; i <= CURVE_SAMPLES; i++) {
         const q = cubicPoint(p0, controls.c1, controls.c2, p1, i / CURVE_SAMPLES);
-        if (distToSegment(x, y, prev.x, prev.y, q.x, q.y) <= HIT_TOLERANCE) {
-          return true;
-        }
+        if (distToSegment(x, y, prev.x, prev.y, q.x, q.y) <= HIT_TOLERANCE) return true;
         prev = q;
       }
       return false;
@@ -198,23 +215,25 @@ function hitElement(el: Element, x: number, y: number, elements: Element[]): boo
       for (let i = 1; i < el.points.length; i++) {
         const a = el.points[i - 1];
         const b = el.points[i];
-        if (distToSegment(x, y, a.x, a.y, b.x, b.y) <= HIT_TOLERANCE) {
-          return true;
-        }
+        if (distToSegment(x, y, a.x, a.y, b.x, b.y) <= HIT_TOLERANCE) return true;
       }
       return false;
     }
+    case 'dimension':
+      return hitDimension(el, x, y, elements, HIT_TOLERANCE);
   }
 }
 
 function hitTest(elements: Element[], x: number, y: number): Element | null {
   for (let i = elements.length - 1; i >= 0; i--) {
-    if (hitElement(elements[i], x, y, elements)) {
-      return elements[i];
-    }
+    if (hitElement(elements[i], x, y, elements)) return elements[i];
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Bounding boxes
+// ---------------------------------------------------------------------------
 
 function bboxOf(el: Element, elements: Element[]): { x: number; y: number; w: number; h: number } {
   switch (el.type) {
@@ -265,12 +284,40 @@ function bboxOf(el: Element, elements: Element[]): { x: number; y: number; w: nu
         maxX = Math.max(maxX, p.x);
         maxY = Math.max(maxY, p.y);
       }
-      if (!Number.isFinite(minX)) {
-        return { x: 0, y: 0, w: 0, h: 0 };
-      }
+      if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 };
       return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     }
+    case 'dimension':
+      return bboxOfDimension(el, elements);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
+// ---------------------------------------------------------------------------
+
+function drawShapeText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+) {
+  ctx.save();
+  ctx.font = '16px sans-serif';
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const pad = 8;
+  ctx.beginPath();
+  ctx.rect(x + pad, y + pad, w - pad * 2, h - pad * 2);
+  ctx.clip();
+  ctx.fillText(text, cx, cy);
+  ctx.restore();
 }
 
 function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Element[]): void {
@@ -285,31 +332,29 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
       if (pts.length === 0) return;
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pts[0].y);
-      if (pts.length === 1) {
-        ctx.lineTo(pts[0].x + 0.01, pts[0].y + 0.01);
-      }
-      for (let i = 1; i < pts.length; i++) {
-        ctx.lineTo(pts[i].x, pts[i].y);
-      }
+      if (pts.length === 1) ctx.lineTo(pts[0].x + 0.01, pts[0].y + 0.01);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
       ctx.stroke();
       break;
     }
-    case 'rect':
+    case 'rect': {
+      const color = el.color ?? STROKE;
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
       ctx.strokeRect(el.x, el.y, el.width, el.height);
+      if (el.text) drawShapeText(ctx, el.text, el.x, el.y, el.width, el.height, color);
       break;
-    case 'ellipse':
+    }
+    case 'ellipse': {
+      const color = el.color ?? STROKE;
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.ellipse(
-        el.x + el.width / 2,
-        el.y + el.height / 2,
-        el.width / 2,
-        el.height / 2,
-        0,
-        0,
-        Math.PI * 2,
-      );
+      ctx.ellipse(el.x + el.width / 2, el.y + el.height / 2, el.width / 2, el.height / 2, 0, 0, Math.PI * 2);
       ctx.stroke();
+      if (el.text) drawShapeText(ctx, el.text, el.x, el.y, el.width, el.height, color);
       break;
+    }
     case 'line':
       ctx.beginPath();
       ctx.moveTo(el.x1, el.y1);
@@ -321,14 +366,7 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
       ctx.beginPath();
       ctx.moveTo(el.x1, el.y1);
       if (controls) {
-        ctx.bezierCurveTo(
-          controls.c1.x,
-          controls.c1.y,
-          controls.c2.x,
-          controls.c2.y,
-          el.x2,
-          el.y2,
-        );
+        ctx.bezierCurveTo(controls.c1.x, controls.c1.y, controls.c2.x, controls.c2.y, el.x2, el.y2);
       } else {
         ctx.lineTo(el.x2, el.y2);
       }
@@ -340,14 +378,8 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
       const spread = Math.PI / 7;
       ctx.beginPath();
       ctx.moveTo(el.x2, el.y2);
-      ctx.lineTo(
-        el.x2 - headLength * Math.cos(angle - spread),
-        el.y2 - headLength * Math.sin(angle - spread),
-      );
-      ctx.lineTo(
-        el.x2 - headLength * Math.cos(angle + spread),
-        el.y2 - headLength * Math.sin(angle + spread),
-      );
+      ctx.lineTo(el.x2 - headLength * Math.cos(angle - spread), el.y2 - headLength * Math.sin(angle - spread));
+      ctx.lineTo(el.x2 - headLength * Math.cos(angle + spread), el.y2 - headLength * Math.sin(angle + spread));
       ctx.closePath();
       ctx.fill();
       break;
@@ -357,11 +389,66 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
       ctx.textBaseline = 'top';
       ctx.fillText(el.text, el.x, el.y);
       break;
+    case 'dimension':
+      drawDimension(ctx, el, elements);
+      break;
   }
 }
 
-function drawSelection(ctx: CanvasRenderingContext2D, el: Element): void {
-  const b = bboxOf(el);
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  camera: Camera,
+  width: number,
+  height: number,
+  gridSize: number,
+) {
+  const step = getGridStep(gridSize, camera.zoom);
+  const majorEvery = 5;
+
+  const worldLeft = -camera.x / camera.zoom;
+  const worldTop = -camera.y / camera.zoom;
+  const worldRight = (width - camera.x) / camera.zoom;
+  const worldBottom = (height - camera.y) / camera.zoom;
+
+  const startX = Math.floor(worldLeft / step) * step;
+  const startY = Math.floor(worldTop / step) * step;
+
+  ctx.save();
+  ctx.lineWidth = 1 / camera.zoom;
+
+  ctx.strokeStyle = '#f0f0f0';
+  ctx.beginPath();
+  for (let x = startX; x <= worldRight; x += step) {
+    if (Math.round(x / step) % majorEvery === 0) continue;
+    ctx.moveTo(x, worldTop);
+    ctx.lineTo(x, worldBottom);
+  }
+  for (let y = startY; y <= worldBottom; y += step) {
+    if (Math.round(y / step) % majorEvery === 0) continue;
+    ctx.moveTo(worldLeft, y);
+    ctx.lineTo(worldRight, y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = '#e0e0e0';
+  ctx.beginPath();
+  for (let x = startX; x <= worldRight; x += step) {
+    if (Math.round(x / step) % majorEvery !== 0) continue;
+    ctx.moveTo(x, worldTop);
+    ctx.lineTo(x, worldBottom);
+  }
+  for (let y = startY; y <= worldBottom; y += step) {
+    if (Math.round(y / step) % majorEvery !== 0) continue;
+    ctx.moveTo(worldLeft, y);
+    ctx.lineTo(worldRight, y);
+  }
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawSelection(ctx: CanvasRenderingContext2D, el: Element, elements: Element[]): void {
+  const b = bboxOf(el, elements);
   ctx.save();
   ctx.strokeStyle = SELECT_COLOR;
   ctx.lineWidth = 1;
@@ -396,15 +483,7 @@ function drawSnapHint(ctx: CanvasRenderingContext2D, target: Element, point: Poi
     ctx.strokeRect(target.x, target.y, target.width, target.height);
   } else if (target.type === 'ellipse') {
     ctx.beginPath();
-    ctx.ellipse(
-      target.x + target.width / 2,
-      target.y + target.height / 2,
-      target.width / 2,
-      target.height / 2,
-      0,
-      0,
-      Math.PI * 2,
-    );
+    ctx.ellipse(target.x + target.width / 2, target.y + target.height / 2, target.width / 2, target.height / 2, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.beginPath();
@@ -412,6 +491,34 @@ function drawSnapHint(ctx: CanvasRenderingContext2D, target: Element, point: Poi
   ctx.fill();
   ctx.restore();
 }
+
+function drawExtendPreview(ctx: CanvasRenderingContext2D, p: ExtendPreview): void {
+  ctx.save();
+  ctx.strokeStyle = SELECT_COLOR;
+  ctx.fillStyle = SELECT_COLOR;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 5]);
+  ctx.strokeRect(p.x, p.y, p.width, p.height);
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(p.fromX, p.fromY);
+  ctx.lineTo(p.toX, p.toY);
+  ctx.stroke();
+  const angle = Math.atan2(p.toY - p.fromY, p.toX - p.fromX);
+  const headLength = 12;
+  const spread = Math.PI / 7;
+  ctx.beginPath();
+  ctx.moveTo(p.toX, p.toY);
+  ctx.lineTo(p.toX - headLength * Math.cos(angle - spread), p.toY - headLength * Math.sin(angle - spread));
+  ctx.lineTo(p.toX - headLength * Math.cos(angle + spread), p.toY - headLength * Math.sin(angle + spread));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Shape creation helpers
+// ---------------------------------------------------------------------------
 
 function makeShape(tool: Tool, id: string, s: Point, c: Point): Element {
   const x = Math.min(s.x, c.x);
@@ -462,14 +569,26 @@ function isMeaningful(el: Element): boolean {
       return Math.hypot(el.x2 - el.x1, el.y2 - el.y1) > MIN_SIZE;
     case 'text':
       return true;
+    case 'dimension':
+      return Math.hypot(el.end.x - el.start.x, el.end.y - el.start.y) > MIN_SIZE;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Canvas component
+// ---------------------------------------------------------------------------
 
 export default function Canvas({
   elements,
   draft,
   tool,
-  selectedId,
+  selectedIds,
+  camera,
+  gridEnabled,
+  snapEnabled,
+  gridSize,
+  spaceHeld,
+  extendPreview,
   onDraftChange,
   onCommit,
   onSelect,
@@ -478,30 +597,60 @@ export default function Canvas({
   onDragEnd,
   onEndpointDragMove,
   onTextPlace,
+  onEditLabel,
+  onCameraChange,
 }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const draftRef = useRef<Element | null>(null);
   const startRef = useRef<Point>({ x: 0, y: 0 });
   const moveRef = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
   const endpointRef = useRef<{ id: string; end: 'start' | 'end'; moved: boolean } | null>(null);
+  const panRef = useRef<{ startX: number; startY: number; camX: number; camY: number } | null>(null);
+  const marqueeRef = useRef<{ startWorld: Point; currentWorld: Point } | null>(null);
+  const pendingDimRef = useRef<Point | null>(null);
+  const lastClickRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
+  const cameraRef = useRef(camera);
+  cameraRef.current = camera;
+
   const [snapHint, setSnapHint] = useState<{ targetId: string; point: Point } | null>(null);
   const [handleHover, setHandleHover] = useState(false);
+  const [marqueeBox, setMarqueeBox] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
 
+  // Clear pending dimension when switching tools
+  useEffect(() => {
+    pendingDimRef.current = null;
+  }, [tool]);
+
+  // ---- Render loop ----
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const render = () => {
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.round(window.innerWidth * dpr);
-      canvas.height = Math.round(window.innerHeight * dpr);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
+
+      // Background
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+
+      // World-space rendering (camera transform)
+      ctx.setTransform(dpr * camera.zoom, 0, 0, dpr * camera.zoom, dpr * camera.x, dpr * camera.y);
+
+      if (gridEnabled) {
+        drawGrid(ctx, camera, w, h, gridSize);
+      }
+
       for (const el of elements) {
-        drawElement(ctx, el);
+        drawElement(ctx, el, elements);
       }
       if (draft) {
-        drawElement(ctx, draft);
+        drawElement(ctx, draft, elements);
       }
       if (snapHint) {
         const target = elements.find((e) => e.id === snapHint.targetId);
@@ -509,63 +658,212 @@ export default function Canvas({
           drawSnapHint(ctx, target, snapHint.point);
         }
       }
-      if (selectedId) {
-        const sel = elements.find((e) => e.id === selectedId);
-        if (sel) {
-          drawSelection(ctx, sel);
-          if (sel.type === 'arrow') {
-            drawArrowHandles(ctx, sel);
+      if (extendPreview) {
+        drawExtendPreview(ctx, extendPreview);
+      }
+
+      // Selection indicators (world-space, line width compensated for zoom)
+      if (selectedIds.size > 0) {
+        ctx.save();
+        ctx.lineWidth = 1 / camera.zoom;
+        for (const id of selectedIds) {
+          const sel = elements.find((e) => e.id === id);
+          if (sel) {
+            drawSelection(ctx, sel, elements);
+            if (sel.type === 'arrow') {
+              drawArrowHandles(ctx, sel);
+            }
           }
         }
+        ctx.restore();
+      }
+
+      // Screen-space overlays
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      if (marqueeBox) {
+        const sx1 = marqueeBox.x1 * camera.zoom + camera.x;
+        const sy1 = marqueeBox.y1 * camera.zoom + camera.y;
+        const sx2 = marqueeBox.x2 * camera.zoom + camera.x;
+        const sy2 = marqueeBox.y2 * camera.zoom + camera.y;
+        ctx.save();
+        ctx.strokeStyle = SELECT_COLOR;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+        ctx.fillStyle = 'rgba(74, 144, 217, 0.08)';
+        ctx.fillRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+        ctx.restore();
       }
     };
     render();
     window.addEventListener('resize', render);
     return () => window.removeEventListener('resize', render);
-  }, [elements, draft, selectedId, snapHint]);
+  }, [elements, draft, selectedIds, snapHint, camera, gridEnabled, gridSize, marqueeBox, extendPreview]);
 
-  const getPos = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
+  // ---- Wheel zoom (non-passive to allow preventDefault) ----
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const cam = cameraRef.current;
+      const delta = -e.deltaY * (e.ctrlKey ? 0.01 : 0.002);
+      const newZoom = cam.zoom * (1 + delta);
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const world = screenToWorld(cam, sx, sy);
+      const clampedZoom = Math.max(0.1, Math.min(10, newZoom));
+      onCameraChange({
+        x: sx - world.x * clampedZoom,
+        y: sy - world.y * clampedZoom,
+        zoom: clampedZoom,
+      });
+    };
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, [onCameraChange]);
 
+  const maybeSnap = (p: Point): Point => (snapEnabled ? snapPointToGrid(p, gridSize) : p);
+
+  // ---- Pointer handlers ----
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    const p = screenToWorld(camera, screenX, screenY);
+
+    // Pan: middle mouse or space + left click
+    if (e.button === 1 || (spaceHeld && e.button === 0)) {
+      e.preventDefault();
+      canvasRef.current?.setPointerCapture(e.pointerId);
+      panRef.current = { startX: screenX, startY: screenY, camX: camera.x, camY: camera.y };
+      return;
+    }
     if (e.button !== 0) return;
-    canvasRef.current?.setPointerCapture(e.pointerId);
-    const p = getPos(e);
+
+    // Text tool: no pointer capture so the textarea can receive focus
+    if (tool === 'text') {
+      const hit = hitTest(elements, p.x, p.y);
+      if (hit && (hit.type === 'rect' || hit.type === 'ellipse')) {
+        onEditLabel(hit.id, hit.x + hit.width / 2, hit.y + hit.height / 2);
+      } else if (hit && hit.type === 'text') {
+        onEditLabel(hit.id, hit.x + hit.width / 2, hit.y + hit.height / 2);
+      } else {
+        onTextPlace(p.x, p.y);
+      }
+      return;
+    }
+
     if (tool === 'select') {
-      const sel = selectedId ? elements.find((el) => el.id === selectedId) : null;
-      if (sel && sel.type === 'arrow') {
-        const nearStart = Math.hypot(p.x - sel.x1, p.y - sel.y1) <= HANDLE_HIT;
-        const nearEnd = Math.hypot(p.x - sel.x2, p.y - sel.y2) <= HANDLE_HIT;
-        if (nearStart || nearEnd) {
-          onSelect(sel.id);
-          onDragStart(sel.id);
-          endpointRef.current = { id: sel.id, end: nearStart ? 'start' : 'end', moved: false };
+      // Arrow endpoint handles
+      for (const id of selectedIds) {
+        const sel = elements.find((el) => el.id === id);
+        if (sel && sel.type === 'arrow') {
+          const nearStart = Math.hypot(p.x - sel.x1, p.y - sel.y1) <= HANDLE_HIT / camera.zoom;
+          const nearEnd = Math.hypot(p.x - sel.x2, p.y - sel.y2) <= HANDLE_HIT / camera.zoom;
+          if (nearStart || nearEnd) {
+            canvasRef.current?.setPointerCapture(e.pointerId);
+            onDragStart([sel.id]);
+            endpointRef.current = { id: sel.id, end: nearStart ? 'start' : 'end', moved: false };
+            return;
+          }
+        }
+      }
+
+      const hit = hitTest(elements, p.x, p.y);
+
+      // Double-click detection: edit shape labels or standalone text
+      const now = Date.now();
+      const last = lastClickRef.current;
+      const isDoubleClick =
+        now - last.time < 400 && Math.hypot(p.x - last.x, p.y - last.y) < 10 / camera.zoom;
+      lastClickRef.current = { time: now, x: p.x, y: p.y };
+
+      if (isDoubleClick && hit) {
+        if (hit.type === 'rect' || hit.type === 'ellipse' || hit.type === 'text') {
+          onEditLabel(hit.id, hit.x + hit.width / 2, hit.y + hit.height / 2);
           return;
         }
       }
-      const hit = hitTest(elements, p.x, p.y);
+
       if (hit) {
-        onSelect(hit.id);
-        onDragStart(hit.id);
-        moveRef.current = { startX: p.x, startY: p.y, moved: false };
+        canvasRef.current?.setPointerCapture(e.pointerId);
+        if (e.shiftKey) {
+          const next = new Set(selectedIds);
+          if (next.has(hit.id)) next.delete(hit.id);
+          else next.add(hit.id);
+          onSelect(next);
+          if (next.size > 0) {
+            onDragStart([...next]);
+            moveRef.current = { startX: p.x, startY: p.y, moved: false };
+          }
+        } else {
+          let ids: Set<string>;
+          if (selectedIds.has(hit.id)) {
+            ids = selectedIds;
+          } else {
+            ids = new Set([hit.id]);
+            onSelect(ids);
+          }
+          onDragStart([...ids]);
+          moveRef.current = { startX: p.x, startY: p.y, moved: false };
+        }
       } else {
-        onSelect(null);
+        canvasRef.current?.setPointerCapture(e.pointerId);
+        if (!e.shiftKey) onSelect(new Set());
+        marqueeRef.current = { startWorld: p, currentWorld: p };
+        setMarqueeBox({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       }
       return;
     }
-    if (tool === 'text') {
-      onTextPlace(p.x, p.y);
+
+    canvasRef.current?.setPointerCapture(e.pointerId);
+
+    if (tool === 'dimension') {
+      const snapped = maybeSnap(p);
+      const snap = findSnapTarget(elements, '', snapped.x, snapped.y);
+      const anchor = snap
+        ? { x: snap.point.x, y: snap.point.y, binding: { elementId: snap.el.id } }
+        : { x: snapped.x, y: snapped.y };
+
+      if (pendingDimRef.current) {
+        const dim: Element = {
+          id: genId(),
+          type: 'dimension',
+          start: { x: pendingDimRef.current.x, y: pendingDimRef.current.y },
+          end: anchor,
+          offset: DIM_OFFSET,
+        };
+        pendingDimRef.current = null;
+        draftRef.current = null;
+        onDraftChange(null);
+        onCommit(dim);
+      } else {
+        pendingDimRef.current = anchor;
+        draftRef.current = {
+          id: genId(),
+          type: 'dimension',
+          start: anchor,
+          end: anchor,
+          offset: DIM_OFFSET,
+        };
+        onDraftChange(draftRef.current);
+      }
+      if (snap) setSnapHint({ targetId: snap.el.id, point: snap.point });
       return;
     }
-    startRef.current = p;
+
+    // Drawing tools: pencil, rectangle, ellipse, line, arrow
+    const snapped = maybeSnap(p);
+    startRef.current = snapped;
     if (tool === 'pencil') {
-      draftRef.current = { id: genId(), type: 'pencil', points: [p] };
+      draftRef.current = { id: genId(), type: 'pencil', points: [snapped] };
     } else {
-      draftRef.current = makeShape(tool, genId(), p, p);
+      draftRef.current = makeShape(tool, genId(), snapped, snapped);
       if (draftRef.current.type === 'arrow') {
-        const snap = findSnapTarget(elements, draftRef.current.id, p.x, p.y);
+        const snap = findSnapTarget(elements, draftRef.current.id, snapped.x, snapped.y);
         if (snap) {
           draftRef.current = {
             ...draftRef.current,
@@ -584,16 +882,34 @@ export default function Canvas({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const p = getPos(e);
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    // Panning
+    if (panRef.current) {
+      const dx = screenX - panRef.current.startX;
+      const dy = screenY - panRef.current.startY;
+      onCameraChange({
+        ...cameraRef.current,
+        x: panRef.current.camX + dx,
+        y: panRef.current.camY + dy,
+      });
+      return;
+    }
+
+    const p = screenToWorld(camera, screenX, screenY);
+
+    // Dragging selected elements
     if (moveRef.current) {
       const dx = p.x - moveRef.current.startX;
       const dy = p.y - moveRef.current.startY;
-      if (dx !== 0 || dy !== 0) {
-        moveRef.current.moved = true;
-      }
+      if (dx !== 0 || dy !== 0) moveRef.current.moved = true;
       onDragMove(dx, dy);
       return;
     }
+
+    // Dragging arrow endpoint
     if (endpointRef.current) {
       const { id, end } = endpointRef.current;
       const snap = findSnapTarget(elements, id, p.x, p.y);
@@ -603,19 +919,58 @@ export default function Canvas({
       setSnapHint(snap ? { targetId: snap.el.id, point: snap.point } : null);
       return;
     }
+
+    // Marquee selection
+    if (marqueeRef.current) {
+      marqueeRef.current.currentWorld = p;
+      setMarqueeBox({
+        x1: marqueeRef.current.startWorld.x,
+        y1: marqueeRef.current.startWorld.y,
+        x2: p.x,
+        y2: p.y,
+      });
+      return;
+    }
+
+    // Dimension preview (second point not yet placed)
     const current = draftRef.current;
+    if (current && current.type === 'dimension' && pendingDimRef.current) {
+      const snapped = maybeSnap(p);
+      const snap = findSnapTarget(elements, current.id, snapped.x, snapped.y);
+      const endPoint = snap ? snap.point : snapped;
+      draftRef.current = {
+        ...current,
+        end: snap
+          ? { x: snap.point.x, y: snap.point.y, binding: { elementId: snap.el.id } }
+          : { x: endPoint.x, y: endPoint.y },
+      };
+      onDraftChange(draftRef.current);
+      setSnapHint(snap ? { targetId: snap.el.id, point: snap.point } : null);
+      return;
+    }
+
     if (!current) {
-      if (tool === 'select' && selectedId) {
-        const sel = elements.find((el) => el.id === selectedId);
-        const over =
-          !!sel &&
-          sel.type === 'arrow' &&
-          (Math.hypot(p.x - sel.x1, p.y - sel.y1) <= HANDLE_HIT ||
-            Math.hypot(p.x - sel.x2, p.y - sel.y2) <= HANDLE_HIT);
+      // Handle hover cursor for arrow endpoints
+      if (tool === 'select' && selectedIds.size > 0) {
+        let over = false;
+        for (const id of selectedIds) {
+          const sel = elements.find((el) => el.id === id);
+          if (sel && sel.type === 'arrow') {
+            if (
+              Math.hypot(p.x - sel.x1, p.y - sel.y1) <= HANDLE_HIT / camera.zoom ||
+              Math.hypot(p.x - sel.x2, p.y - sel.y2) <= HANDLE_HIT / camera.zoom
+            ) {
+              over = true;
+              break;
+            }
+          }
+        }
         setHandleHover((prev) => (prev === over ? prev : over));
       }
       return;
     }
+
+    // Drawing tool previews
     if (current.type === 'pencil') {
       draftRef.current = { ...current, points: [...current.points, p] };
     } else if (current.type === 'arrow') {
@@ -636,16 +991,53 @@ export default function Canvas({
 
   const handlePointerUp = () => {
     setSnapHint(null);
+
+    if (panRef.current) {
+      panRef.current = null;
+      return;
+    }
+
     if (endpointRef.current) {
       onDragEnd(endpointRef.current.moved);
       endpointRef.current = null;
       return;
     }
+
     if (moveRef.current) {
       onDragEnd(moveRef.current.moved);
       moveRef.current = null;
       return;
     }
+
+    // Marquee selection commit
+    if (marqueeRef.current) {
+      const { startWorld, currentWorld } = marqueeRef.current;
+      const minX = Math.min(startWorld.x, currentWorld.x);
+      const maxX = Math.max(startWorld.x, currentWorld.x);
+      const minY = Math.min(startWorld.y, currentWorld.y);
+      const maxY = Math.max(startWorld.y, currentWorld.y);
+
+      if (maxX - minX > 2 / camera.zoom || maxY - minY > 2 / camera.zoom) {
+        const hits = new Set<string>();
+        for (const el of elements) {
+          const b = bboxOf(el, elements);
+          if (b.x >= minX && b.y >= minY && b.x + b.w <= maxX && b.y + b.h <= maxY) {
+            hits.add(el.id);
+          }
+        }
+        onSelect(hits);
+      }
+
+      marqueeRef.current = null;
+      setMarqueeBox(null);
+      return;
+    }
+
+    // Dimension tool: first click just sets the anchor, don't commit
+    if (tool === 'dimension' && pendingDimRef.current) {
+      return;
+    }
+
     const current = draftRef.current;
     draftRef.current = null;
     if (!current) return;
@@ -658,6 +1050,8 @@ export default function Canvas({
 
   const handlePointerCancel = () => {
     setSnapHint(null);
+    panRef.current = null;
+    pendingDimRef.current = null;
     if (endpointRef.current) {
       onDragEnd(false);
       endpointRef.current = null;
@@ -666,16 +1060,29 @@ export default function Canvas({
       onDragEnd(false);
       moveRef.current = null;
     }
+    if (marqueeRef.current) {
+      marqueeRef.current = null;
+      setMarqueeBox(null);
+    }
     if (draftRef.current) {
       draftRef.current = null;
       onDraftChange(null);
     }
   };
 
+  // ---- Cursor ----
+  let cursor = 'crosshair';
+  if (tool === 'select') {
+    cursor = handleHover ? 'move' : 'default';
+  }
+  if (spaceHeld) {
+    cursor = panRef.current ? 'grabbing' : 'grab';
+  }
+
   return (
     <canvas
       ref={canvasRef}
-      style={{ cursor: tool === 'select' ? (handleHover ? 'move' : 'default') : 'crosshair' }}
+      style={{ cursor }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
