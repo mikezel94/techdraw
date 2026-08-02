@@ -298,6 +298,27 @@ canvas {
   border-color: #93c5fd;
 }
 
+.palette-delete {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease, transform 0.1s ease;
+}
+
+.palette-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  transform: translateY(-1px);
+}
+
 /* ---- Extend-to-next-box chip (trails the newest box) ---- */
 
 .extend-chip {
