@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   qwen-agent:
-    if: github.event.label.name == 'AI'
+    if: github.event.label.name == 'AI' && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
