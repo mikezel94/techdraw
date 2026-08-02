@@ -22,6 +22,10 @@ const SNAP_THRESHOLD = 14;
 const HANDLE_SIZE = 8;
 const HANDLE_HIT = 8;
 const CURVE_SAMPLES = 24;
+const ARROW_HEAD_MIN = 14;
+const ARROW_HEAD_MAX = 30;
+const ARROW_HEAD_RATIO = 0.15;
+const ARROW_HEAD_SPREAD = Math.PI / 6;
 
 export interface ExtendPreview {
   x: number;
@@ -381,8 +385,9 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
       const angle = controls
         ? Math.atan2(el.y2 - controls.c2.y, el.x2 - controls.c2.x)
         : Math.atan2(el.y2 - el.y1, el.x2 - el.x1);
-      const headLength = 14;
-      const spread = Math.PI / 7;
+      const arrowLen = Math.hypot(el.x2 - el.x1, el.y2 - el.y1);
+      const headLength = clamp(arrowLen * ARROW_HEAD_RATIO, ARROW_HEAD_MIN, ARROW_HEAD_MAX);
+      const spread = ARROW_HEAD_SPREAD;
       ctx.beginPath();
       ctx.moveTo(el.x2, el.y2);
       ctx.lineTo(el.x2 - headLength * Math.cos(angle - spread), el.y2 - headLength * Math.sin(angle - spread));
@@ -512,8 +517,9 @@ function drawExtendPreview(ctx: CanvasRenderingContext2D, p: ExtendPreview): voi
   ctx.lineTo(p.toX, p.toY);
   ctx.stroke();
   const angle = Math.atan2(p.toY - p.fromY, p.toX - p.fromX);
-  const headLength = 12;
-  const spread = Math.PI / 7;
+  const previewLen = Math.hypot(p.toX - p.fromX, p.toY - p.fromY);
+  const headLength = clamp(previewLen * ARROW_HEAD_RATIO, ARROW_HEAD_MIN, ARROW_HEAD_MAX);
+  const spread = ARROW_HEAD_SPREAD;
   ctx.beginPath();
   ctx.moveTo(p.toX, p.toY);
   ctx.lineTo(p.toX - headLength * Math.cos(angle - spread), p.toY - headLength * Math.sin(angle - spread));
