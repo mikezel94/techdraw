@@ -70,3 +70,4 @@ What follows from this decision — benefits, costs, and new constraints.
 | [0003](./0003-arrow-bend-scalar.md) | User-adjustable arrow bend as a scalar offset | Accepted | 2026-08-02 |
 | [0004](./0004-localstorage-autosave.md) | localStorage auto-save for persistence | Accepted | 2026-08-02 |
 | [0005](./0005-png-svg-export.md) | PNG and SVG export from the content bounding box | Accepted | 2026-08-02 |
+| [0006](./0006-tdraw-project-files.md) | Portable `.tdraw` project files | Accepted | 2026-08-02 |

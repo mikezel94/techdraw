@@ -20,6 +20,8 @@ import { DEFAULT_CAMERA, clampZoom } from './camera';
 import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './labelFont';
 import { clearProject, loadProject, saveProject } from './storage';
 import { exportPng, exportSvg } from './export';
+import { downloadProject, readProjectFile } from './projectFile';
+import type { ProjectFile } from './projectFile';
 import type { PngExportOptions } from './components/Toolbar';
 
 const TEXT_FONT = '20px sans-serif';
@@ -90,6 +92,8 @@ export default function App() {
   const [restoredAt, setRestoredAt] = useState<string | null>(() => restored?.savedAt ?? null);
   const [saveFlash, setSaveFlash] = useState(false);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const [title, setTitle] = useState('Untitled');
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const dragBaseRef = useRef<Element[] | null>(null);
   const dragSelectedRef = useRef<Set<string>>(new Set());
@@ -183,8 +187,10 @@ export default function App() {
     setGridEnabled(true);
     setSnapEnabled(true);
     setTool('pencil');
+    setTitle('Untitled');
     setRestoredAt(null);
     setStorageWarning(null);
+    setFileError(null);
   };
 
   const handleExportPng = ({ scale, transparent }: PngExportOptions) => {
@@ -196,6 +202,67 @@ export default function App() {
     if (elements.length === 0) return;
     exportSvg(elements);
   };
+
+  const handleSaveProject = () => {
+    downloadProject({ title, elements, camera, gridEnabled, snapEnabled });
+  };
+
+  // Replaces the whole scene with a parsed project file. Shared by the Open
+  // button and canvas drag-and-drop.
+  const applyLoadedProject = (project: ProjectFile) => {
+    setPast([]);
+    setFuture([]);
+    setElements(project.elements);
+    setSelectedIds(new Set());
+    setDraft(null);
+    setEditing(null);
+    setCamera(project.camera);
+    setGridEnabled(project.gridEnabled);
+    setSnapEnabled(project.snapEnabled);
+    setTool('select');
+    setTitle(project.title);
+    setRestoredAt(null);
+    setStorageWarning(null);
+    setFileError(null);
+  };
+
+  const openProjectFile = useCallback(async (file: File) => {
+    const result = await readProjectFile(file);
+    if (result.ok) {
+      applyLoadedProject(result.project);
+    } else {
+      setFileError(`Could not open "${file.name}": ${result.error}`);
+    }
+  }, []);
+
+  const openProjectFileRef = useRef(openProjectFile);
+  openProjectFileRef.current = openProjectFile;
+
+  // Drag-and-drop a `.tdraw` file anywhere on the canvas to open it.
+  useEffect(() => {
+    const isTdraw = (file: File) =>
+      file.name.toLowerCase().endsWith('.tdraw') || file.type === 'application/json';
+    const onDragOver = (ev: DragEvent) => {
+      if (ev.dataTransfer?.types.includes('Files')) ev.preventDefault();
+    };
+    const onDrop = (ev: DragEvent) => {
+      const files = ev.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      ev.preventDefault();
+      const file = files[0];
+      if (!isTdraw(file)) {
+        setFileError(`Could not open "${file.name}": not a .tdraw project file.`);
+        return;
+      }
+      void openProjectFileRef.current(file);
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
 
   const deleteSelection = () => {
     if (selectedIds.size === 0) return;
@@ -723,6 +790,8 @@ export default function App() {
         canRedo={future.length > 0}
         elementCount={elements.length}
         onNewDrawing={newDrawing}
+        onSaveProject={handleSaveProject}
+        onOpenProjectFile={(file) => void openProjectFile(file)}
         onExportPng={handleExportPng}
         onExportSvg={handleExportSvg}
       />
@@ -749,6 +818,14 @@ export default function App() {
         <div className="storage-warning" data-testid="storage-warning" role="alert">
           <span>{storageWarning}</span>
           <button type="button" aria-label="Dismiss warning" onClick={() => setStorageWarning(null)}>
+            ×
+          </button>
+        </div>
+      )}
+      {fileError && (
+        <div className="file-error" data-testid="file-error" role="alert">
+          <span>{fileError}</span>
+          <button type="button" aria-label="Dismiss" onClick={() => setFileError(null)}>
             ×
           </button>
         </div>
