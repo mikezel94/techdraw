@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import Canvas from './components/Canvas';
+import Canvas, { bboxOf } from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import ZoomControls from './components/ZoomControls';
 import GridControls from './components/GridControls';
@@ -33,6 +33,7 @@ const EXTEND_GAP = 100;
 const CHIP_SIZE = 26;
 const AUTOSAVE_DEBOUNCE_MS = 800;
 const SAVE_FLASH_MS = 2000;
+const DELETE_CONFIRM_THRESHOLD = 10;
 // "A" glyph sizes used on the S/M/L palette buttons.
 const FONT_SCALE_BUTTON_SIZES: Record<FontScale, number> = { small: 10, medium: 13, large: 16 };
 
@@ -266,19 +267,37 @@ export default function App() {
 
   const deleteSelection = () => {
     if (selectedIds.size === 0) return;
+    // Dimensions measure their parent shape, so they die with it; arrows only
+    // lose the binding on the deleted end and stay on the canvas.
+    const dependentDimensionIds = elements
+      .filter(
+        (e) =>
+          e.type === 'dimension' &&
+          !selectedIds.has(e.id) &&
+          ((e.start.binding && selectedIds.has(e.start.binding.elementId)) ||
+            (e.end.binding && selectedIds.has(e.end.binding.elementId))),
+      )
+      .map((e) => e.id);
+    const deletedIds = new Set([...selectedIds, ...dependentDimensionIds]);
+    if (
+      deletedIds.size > DELETE_CONFIRM_THRESHOLD &&
+      !window.confirm(`Delete ${deletedIds.size} elements? You can undo this with Ctrl+Z.`)
+    ) {
+      return;
+    }
     pushHistory(elements);
     setElements(
       elements
-        .filter((e) => !selectedIds.has(e.id))
+        .filter((e) => !deletedIds.has(e.id))
         .map((e) => {
           if (e.type !== 'arrow') return e;
           const cleared = { ...e };
           let changed = false;
-          if (cleared.startBinding && selectedIds.has(cleared.startBinding.elementId)) {
+          if (cleared.startBinding && deletedIds.has(cleared.startBinding.elementId)) {
             delete cleared.startBinding;
             changed = true;
           }
-          if (cleared.endBinding && selectedIds.has(cleared.endBinding.elementId)) {
+          if (cleared.endBinding && deletedIds.has(cleared.endBinding.elementId)) {
             delete cleared.endBinding;
             changed = true;
           }
@@ -618,6 +637,7 @@ export default function App() {
         ev.preventDefault();
         setSelectedIds(new Set(elements.map((e) => e.id)));
       } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
+        ev.preventDefault();
         deleteSelection();
       } else if (ev.key === 'Escape') {
         setSelectedIds(new Set());
@@ -671,24 +691,27 @@ export default function App() {
     textareaStyle = { ...textareaStyle, fontSize: TEXT_FONT_SIZE * camera.zoom };
   }
 
-  // Floating color palette above the selected shape(s)
-  const colorableSelected = elements.filter(
-    (e): e is RectElement | EllipseElement =>
-      selectedIds.has(e.id) && (e.type === 'rect' || e.type === 'ellipse'),
+  // Floating palette above the selection: color/font controls when everything
+  // selected is a shape, plus a delete action for any selection.
+  const selectedElements = elements.filter((e) => selectedIds.has(e.id));
+  const colorableSelected = selectedElements.filter(
+    (e): e is RectElement | EllipseElement => e.type === 'rect' || e.type === 'ellipse',
   );
-  const paletteVisible =
-    !editing && selectedIds.size > 0 && colorableSelected.length === selectedIds.size;
+  const allColorable =
+    selectedElements.length > 0 && colorableSelected.length === selectedElements.length;
+  const paletteVisible = !editing && selectedElements.length > 0;
   let paletteBox: { x: number; y: number; w: number; h: number } | null = null;
   if (paletteVisible) {
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
-    for (const e of colorableSelected) {
-      minX = Math.min(minX, e.x);
-      minY = Math.min(minY, e.y);
-      maxX = Math.max(maxX, e.x + e.width);
-      maxY = Math.max(maxY, e.y + e.height);
+    for (const e of selectedElements) {
+      const b = bboxOf(e, elements);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w);
+      maxY = Math.max(maxY, b.y + b.h);
     }
     paletteBox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
@@ -727,7 +750,7 @@ export default function App() {
     }
     const el = paletteRef.current;
     if (el) setPaletteHalfW(el.offsetWidth / 2);
-  }, [paletteVisible]);
+  }, [paletteVisible, allColorable]);
 
   // Screen positions for the "extend to next box" suggestion
   const chipVisible = !!extendRect;
@@ -845,6 +868,8 @@ export default function App() {
           data-testid="color-palette"
           style={{ left: paletteScreen.left, top: paletteScreen.top }}
         >
+          {allColorable && (
+            <>
           <button
             type="button"
             className={`color-swatch${currentColor === null ? ' active' : ''}`}
@@ -926,6 +951,35 @@ export default function App() {
               <span style={{ fontSize: FONT_SCALE_BUTTON_SIZES[s.id] }}>A</span>
             </button>
           ))}
+            </>
+          )}
+          {allColorable && <div className="palette-divider" />}
+          <button
+            type="button"
+            className="palette-delete"
+            data-testid="delete-selection"
+            title="Delete selection (Del)"
+            aria-label="Delete"
+            onClick={deleteSelection}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+          </button>
         </div>
       )}
       {chipScreen && (
