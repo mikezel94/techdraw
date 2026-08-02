@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Tool } from '../types';
+import { PROJECT_FILE_EXT } from '../projectFile';
 
 const TOOLS: { id: Tool; name: string; title: string }[] = [
   { id: 'select', name: 'Select', title: 'Select & Move (V)' },
@@ -147,6 +148,8 @@ interface ToolbarProps {
   canRedo: boolean;
   elementCount: number;
   onNewDrawing: () => void;
+  onSaveProject: () => void;
+  onOpenProjectFile: (file: File) => void;
   onExportPng: (opts: PngExportOptions) => void;
   onExportSvg: () => void;
 }
@@ -160,9 +163,12 @@ export default function Toolbar({
   canRedo,
   elementCount,
   onNewDrawing,
+  onSaveProject,
+  onOpenProjectFile,
   onExportPng,
   onExportSvg,
 }: ToolbarProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="toolbar">
       {TOOLS.map((t) => (
@@ -211,6 +217,42 @@ export default function Toolbar({
           <line x1="9.5" y1="14.5" x2="14.5" y2="14.5" />
         </ToolIcon>
       </button>
+      <button
+        type="button"
+        onClick={onSaveProject}
+        title="Save project as .tdraw file"
+        aria-label="Save project"
+        data-testid="save-project"
+      >
+        <ToolIcon>
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </ToolIcon>
+      </button>
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        title="Open a .tdraw project file"
+        aria-label="Open project"
+        data-testid="open-project"
+      >
+        <ToolIcon>
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </ToolIcon>
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={`${PROJECT_FILE_EXT},application/json`}
+        data-testid="open-project-input"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.currentTarget.files?.[0];
+          e.currentTarget.value = '';
+          if (file) onOpenProjectFile(file);
+        }}
+      />
       <div className="divider" />
       <ExportMenu elementCount={elementCount} onExportPng={onExportPng} onExportSvg={onExportSvg} />
       <div className="divider" />

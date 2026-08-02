@@ -96,3 +96,4 @@ Current decisions:
 | [0003](./docs/adr/0003-arrow-bend-scalar.md) | User-adjustable arrow bend as a scalar offset | Accepted |
 | [0004](./docs/adr/0004-localstorage-autosave.md) | localStorage auto-save for persistence | Accepted |
 | [0005](./docs/adr/0005-png-svg-export.md) | PNG and SVG export from the content bounding box | Accepted |
+| [0006](./docs/adr/0006-tdraw-project-files.md) | Portable `.tdraw` project files | Accepted |
