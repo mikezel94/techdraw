@@ -47,6 +47,15 @@ jobs:
           cat > ~/.qwen/settings.json << 'EOF'
           {
             "$version": 4,
+            "security": {
+              "auth": {
+                "selectedType": "openai"
+              }
+            },
+            "model": {
+              "name": "qwen3.8-max-preview",
+              "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+            },
             "modelProviders": {
               "openai": [
                 {
@@ -56,7 +65,9 @@ jobs:
                   "envKey": "BAILIAN_TOKEN_PLAN_API_KEY",
                   "generationConfig": {
                     "extra_body": { "enable_thinking": true },
-                    "contextWindowSize": 1000000
+                    "thinkingMandatory": true,
+                    "contextWindowSize": 1000000,
+                    "modalities": { "image": true, "video": true }
                   }
                 }
               ]
