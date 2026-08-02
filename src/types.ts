@@ -5,6 +5,8 @@ export interface Point {
 
 interface BaseElement {
   id: string;
+  /** Shared by elements that move/select as one unit (Ctrl+G / Ctrl+Shift+G). */
+  groupId?: string;
 }
 
 export type FontScale = 'small' | 'medium' | 'large';
@@ -103,4 +105,11 @@ let idCounter = 0;
 export function genId(): string {
   idCounter += 1;
   return `el-${idCounter}`;
+}
+
+let groupIdCounter = 0;
+
+export function genGroupId(): string {
+  groupIdCounter += 1;
+  return `group-${groupIdCounter}`;
 }

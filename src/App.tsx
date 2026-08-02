@@ -14,7 +14,7 @@ import type {
   TextElement,
   Tool,
 } from './types';
-import { genId } from './types';
+import { genId, genGroupId } from './types';
 import type { Camera } from './lib/camera';
 import { DEFAULT_CAMERA, clampZoom } from './lib/camera';
 import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './lib/labelFont';
@@ -34,6 +34,7 @@ const CHIP_SIZE = 26;
 const AUTOSAVE_DEBOUNCE_MS = 800;
 const SAVE_FLASH_MS = 2000;
 const DELETE_CONFIRM_THRESHOLD = 10;
+const PASTE_OFFSET = 20;
 // "A" glyph sizes used on the S/M/L palette buttons.
 const FONT_SCALE_BUTTON_SIZES: Record<FontScale, number> = { small: 10, medium: 13, large: 16 };
 
@@ -55,6 +56,57 @@ function translateElement(el: Element, dx: number, dy: number): Element {
         end: { ...el.end, x: el.end.x + dx, y: el.end.y + dy },
       };
   }
+}
+
+// Deep-copies elements for paste/duplicate: fresh ids, an (dx, dy) offset, and
+// bindings/groups remapped so relationships inside the copied set survive while
+// references to elements left behind are dropped.
+function cloneElements(els: Element[], dx: number, dy: number): Element[] {
+  const idMap = new Map<string, string>();
+  for (const e of els) idMap.set(e.id, genId());
+  const groupMap = new Map<string, string>();
+  return els.map((orig) => {
+    let clone: Element = { ...translateElement(orig, dx, dy), id: idMap.get(orig.id)! };
+    if (clone.groupId) {
+      let gid = groupMap.get(clone.groupId);
+      if (!gid) {
+        gid = genGroupId();
+        groupMap.set(clone.groupId, gid);
+      }
+      clone = { ...clone, groupId: gid };
+    }
+    if (clone.type === 'arrow') {
+      const a = { ...clone };
+      if (a.startBinding) {
+        const target = idMap.get(a.startBinding.elementId);
+        if (target) a.startBinding = { elementId: target };
+        else delete a.startBinding;
+      }
+      if (a.endBinding) {
+        const target = idMap.get(a.endBinding.elementId);
+        if (target) a.endBinding = { elementId: target };
+        else delete a.endBinding;
+      }
+      clone = a;
+    }
+    if (clone.type === 'dimension') {
+      const d = { ...clone };
+      if (d.start.binding) {
+        const target = idMap.get(d.start.binding.elementId);
+        d.start = target
+          ? { ...d.start, binding: { elementId: target } }
+          : { x: d.start.x, y: d.start.y };
+      }
+      if (d.end.binding) {
+        const target = idMap.get(d.end.binding.elementId);
+        d.end = target
+          ? { ...d.end, binding: { elementId: target } }
+          : { x: d.end.x, y: d.end.y };
+      }
+      clone = d;
+    }
+    return clone;
+  });
 }
 
 const measureCtx = document.createElement('canvas').getContext('2d');
@@ -104,10 +156,31 @@ export default function App() {
   const paletteRef = useRef<HTMLDivElement | null>(null);
   const [paletteHalfW, setPaletteHalfW] = useState(0);
   const skipFirstSaveRef = useRef(true);
+  const clipboardRef = useRef<Element[] | null>(null);
 
   const pushHistory = (snapshot: Element[]) => {
     setPast((p) => [...p, snapshot]);
     setFuture([]);
+  };
+
+  // Selecting or dragging any member of a group pulls in the whole group, so
+  // grouped elements always move and select as one unit.
+  const expandGroups = (ids: Set<string>): Set<string> => {
+    if (ids.size === 0) return ids;
+    const groupIds = new Set<string>();
+    for (const e of elements) {
+      if (ids.has(e.id) && e.groupId) groupIds.add(e.groupId);
+    }
+    if (groupIds.size === 0) return ids;
+    const next = new Set(ids);
+    for (const e of elements) {
+      if (e.groupId && groupIds.has(e.groupId)) next.add(e.id);
+    }
+    return next;
+  };
+
+  const selectIds = (ids: Set<string>) => {
+    setSelectedIds(expandGroups(ids));
   };
 
   const commitElement = (el: Element) => {
@@ -308,9 +381,57 @@ export default function App() {
     setExtendHover(false);
   };
 
+  const copySelection = () => {
+    if (selectedIds.size === 0) return;
+    clipboardRef.current = elements.filter((e) => selectedIds.has(e.id));
+  };
+
+  const pasteClipboard = () => {
+    const clip = clipboardRef.current;
+    if (!clip || clip.length === 0) return;
+    const clones = cloneElements(clip, PASTE_OFFSET, PASTE_OFFSET);
+    pushHistory(elements);
+    setElements([...elements, ...clones]);
+    setSelectedIds(new Set(clones.map((c) => c.id)));
+  };
+
+  const duplicateSelection = () => {
+    if (selectedIds.size === 0) return;
+    const clones = cloneElements(
+      elements.filter((e) => selectedIds.has(e.id)),
+      PASTE_OFFSET,
+      PASTE_OFFSET,
+    );
+    pushHistory(elements);
+    setElements([...elements, ...clones]);
+    setSelectedIds(new Set(clones.map((c) => c.id)));
+  };
+
+  const groupSelection = () => {
+    if (selectedIds.size < 2) return;
+    const groupId = genGroupId();
+    pushHistory(elements);
+    setElements(
+      elements.map((e) => (selectedIds.has(e.id) ? { ...e, groupId } : e)),
+    );
+  };
+
+  const ungroupSelection = () => {
+    if (!elements.some((e) => selectedIds.has(e.id) && e.groupId)) return;
+    pushHistory(elements);
+    setElements(
+      elements.map((e) => {
+        if (!selectedIds.has(e.id) || !e.groupId) return e;
+        const cleared = { ...e };
+        delete cleared.groupId;
+        return cleared;
+      }),
+    );
+  };
+
   const handleDragStart = (ids: string[]) => {
     dragBaseRef.current = elements;
-    dragSelectedRef.current = new Set(ids);
+    dragSelectedRef.current = expandGroups(new Set(ids));
   };
 
   const handleDragMove = (dx: number, dy: number) => {
@@ -636,6 +757,19 @@ export default function App() {
       } else if (mod && ev.key.toLowerCase() === 'a') {
         ev.preventDefault();
         setSelectedIds(new Set(elements.map((e) => e.id)));
+      } else if (mod && ev.key.toLowerCase() === 'c') {
+        ev.preventDefault();
+        copySelection();
+      } else if (mod && ev.key.toLowerCase() === 'v') {
+        ev.preventDefault();
+        pasteClipboard();
+      } else if (mod && ev.key.toLowerCase() === 'd') {
+        ev.preventDefault();
+        duplicateSelection();
+      } else if (mod && ev.key.toLowerCase() === 'g') {
+        ev.preventDefault();
+        if (ev.shiftKey) ungroupSelection();
+        else groupSelection();
       } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
         ev.preventDefault();
         deleteSelection();
@@ -790,7 +924,7 @@ export default function App() {
         extendPreview={extendPreview}
         onDraftChange={setDraft}
         onCommit={commitElement}
-        onSelect={setSelectedIds}
+        onSelect={selectIds}
         onDragStart={handleDragStart}
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
