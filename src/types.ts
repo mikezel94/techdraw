@@ -22,6 +22,7 @@ export interface RectElement extends BaseElement {
   height: number;
   text?: string;
   color?: string;
+  fill?: string;
   fontScale?: FontScale;
 }
 
@@ -33,6 +34,7 @@ export interface EllipseElement extends BaseElement {
   height: number;
   text?: string;
   color?: string;
+  fill?: string;
   fontScale?: FontScale;
 }
 
