@@ -19,6 +19,8 @@ import type { Camera } from './camera';
 import { DEFAULT_CAMERA, clampZoom } from './camera';
 import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './labelFont';
 import { clearProject, loadProject, saveProject } from './storage';
+import { exportPng, exportSvg } from './export';
+import type { PngExportOptions } from './components/Toolbar';
 
 const TEXT_FONT = '20px sans-serif';
 const TEXT_FONT_SIZE = 20;
@@ -183,6 +185,16 @@ export default function App() {
     setTool('pencil');
     setRestoredAt(null);
     setStorageWarning(null);
+  };
+
+  const handleExportPng = ({ scale, transparent }: PngExportOptions) => {
+    if (elements.length === 0) return;
+    exportPng(elements, scale, transparent);
+  };
+
+  const handleExportSvg = () => {
+    if (elements.length === 0) return;
+    exportSvg(elements);
   };
 
   const deleteSelection = () => {
@@ -711,6 +723,8 @@ export default function App() {
         canRedo={future.length > 0}
         elementCount={elements.length}
         onNewDrawing={newDrawing}
+        onExportPng={handleExportPng}
+        onExportSvg={handleExportSvg}
       />
       <ZoomControls
         zoom={camera.zoom}

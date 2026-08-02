@@ -14,7 +14,7 @@ import { screenToWorld, snapPointToGrid, getGridStep } from '../camera';
 import { drawDimension, hitDimension, bboxOfDimension, DIM_OFFSET } from '../dimensions';
 import { fitLabelFontSize, LABEL_FONT_FAMILY, LABEL_PAD } from '../labelFont';
 
-const STROKE = '#1e1e1e';
+export const STROKE = '#1e1e1e';
 const SELECT_COLOR = '#4a90d9';
 const HIT_TOLERANCE = 6;
 const MIN_SIZE = 3;
@@ -22,10 +22,10 @@ const SNAP_THRESHOLD = 14;
 const HANDLE_SIZE = 8;
 const HANDLE_HIT = 8;
 const CURVE_SAMPLES = 24;
-const ARROW_HEAD_MIN = 14;
-const ARROW_HEAD_MAX = 30;
-const ARROW_HEAD_RATIO = 0.15;
-const ARROW_HEAD_SPREAD = Math.PI / 6;
+export const ARROW_HEAD_MIN = 14;
+export const ARROW_HEAD_MAX = 30;
+export const ARROW_HEAD_RATIO = 0.15;
+export const ARROW_HEAD_SPREAD = Math.PI / 6;
 const ARROW_BOW_RATIO = 0.1;
 const ARROW_BOW_MAX = 25;
 
@@ -165,7 +165,7 @@ interface ArrowControls {
   c2: Point;
 }
 
-function arrowControls(elements: Element[], el: ArrowElement): ArrowControls {
+export function arrowControls(elements: Element[], el: ArrowElement): ArrowControls {
   const dx = el.x2 - el.x1;
   const dy = el.y2 - el.y1;
   const len = Math.hypot(dx, dy) || 1;
@@ -282,7 +282,7 @@ function hitTest(elements: Element[], x: number, y: number): Element | null {
 // Bounding boxes
 // ---------------------------------------------------------------------------
 
-function bboxOf(el: Element, elements: Element[]): { x: number; y: number; w: number; h: number } {
+export function bboxOf(el: Element, elements: Element[]): { x: number; y: number; w: number; h: number } {
   switch (el.type) {
     case 'rect':
     case 'ellipse':
@@ -359,7 +359,7 @@ function drawShapeText(
   ctx.restore();
 }
 
-function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Element[]): void {
+export function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Element[]): void {
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Tool } from '../types';
 
@@ -58,6 +59,85 @@ function ToolIcon({ children }: { children: ReactNode }) {
   );
 }
 
+export interface PngExportOptions {
+  scale: number;
+  transparent: boolean;
+}
+
+interface ExportMenuProps {
+  elementCount: number;
+  onExportPng: (opts: PngExportOptions) => void;
+  onExportSvg: () => void;
+}
+
+function ExportMenu({ elementCount, onExportPng, onExportSvg }: ExportMenuProps) {
+  const items: { testId: string; label: string; run: () => void }[] = [
+    { testId: 'export-png-2x', label: 'Download PNG (2x)', run: () => onExportPng({ scale: 2, transparent: false }) },
+    { testId: 'export-png-1x', label: 'Download PNG (1x)', run: () => onExportPng({ scale: 1, transparent: false }) },
+    { testId: 'export-png-transparent', label: 'Download PNG (2x, transparent)', run: () => onExportPng({ scale: 2, transparent: true }) },
+    { testId: 'export-svg', label: 'Download SVG', run: () => onExportSvg() },
+  ];
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const disabled = elementCount === 0;
+
+  return (
+    <div className="export-menu" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        title="Export drawing"
+        aria-label="Export"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-testid="export-button"
+      >
+        <ToolIcon>
+          <path d="M12 3v12" />
+          <polyline points="8 11 12 15 16 11" />
+          <path d="M5 21h14" />
+        </ToolIcon>
+      </button>
+      {open && (
+        <div className="export-menu-items" role="menu">
+          {items.map((item) => (
+            <button
+              key={item.testId}
+              type="button"
+              role="menuitem"
+              data-testid={item.testId}
+              onClick={() => {
+                setOpen(false);
+                item.run();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ToolbarProps {
   tool: Tool;
   onToolChange: (tool: Tool) => void;
@@ -67,6 +147,8 @@ interface ToolbarProps {
   canRedo: boolean;
   elementCount: number;
   onNewDrawing: () => void;
+  onExportPng: (opts: PngExportOptions) => void;
+  onExportSvg: () => void;
 }
 
 export default function Toolbar({
@@ -78,6 +160,8 @@ export default function Toolbar({
   canRedo,
   elementCount,
   onNewDrawing,
+  onExportPng,
+  onExportSvg,
 }: ToolbarProps) {
   return (
     <div className="toolbar">
@@ -127,6 +211,8 @@ export default function Toolbar({
           <line x1="9.5" y1="14.5" x2="14.5" y2="14.5" />
         </ToolIcon>
       </button>
+      <div className="divider" />
+      <ExportMenu elementCount={elementCount} onExportPng={onExportPng} onExportSvg={onExportSvg} />
       <div className="divider" />
       <span className="status">
         Elements: <span data-testid="element-count">{elementCount}</span>
