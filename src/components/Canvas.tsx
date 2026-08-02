@@ -345,7 +345,9 @@ function drawShapeText(
   const size = fitLabelFontSize(text, w, h, el.fontScale, el.type === 'ellipse');
   ctx.save();
   ctx.font = `${size}px ${LABEL_FONT_FAMILY}`;
-  ctx.fillStyle = color;
+  // Text color is independent of the border color; it falls back to the
+  // border color when unset so labels stay legible on unfilled shapes.
+  ctx.fillStyle = el.textColor ?? color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   // Clip keeps oversized labels (e.g. large scale on a tiny box) inside the shape.
