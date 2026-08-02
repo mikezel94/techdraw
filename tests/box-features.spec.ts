@@ -39,6 +39,7 @@ const isDark = ([r, g, b]: RGB) => r < 100 && g < 100 && b < 100;
 const isPreviewBlue = ([r, g, b]: RGB) => b > 180 && r < 160 && g > r && b > g;
 // Swatch #dc2626
 const isRed = ([r, g, b]: RGB) => r > 150 && g < 100 && b < 100;
+const isWhite = ([r, g, b]: RGB) => r > 230 && g > 230 && b > 230;
 
 test('drawn box is auto-selected with a color palette and recolors its stroke', async ({ page }) => {
   await page.goto('/');
@@ -225,4 +226,43 @@ test('label size selector rescales box text (small / medium / large)', async ({ 
   expect(largeSpan).toBeGreaterThan(mediumSpan);
   expect(mediumSpan).toBeGreaterThan(smallSpan);
   expect(largeSpan).toBeGreaterThan(smallSpan * 1.5);
+});
+
+test('text color can be set to white, independent of border and fill', async ({ page }) => {
+  await page.goto('/');
+
+  // Draw a box at (140,140)-(320,260); center is (230,200).
+  await page.getByRole('button', { name: 'Rect' }).click();
+  await page.mouse.move(140, 140);
+  await page.mouse.down();
+  await page.mouse.move(320, 260, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.getByTestId('color-palette')).toBeVisible();
+
+  // Fill it dark blue so white text will be visible against the interior.
+  await page.locator('[data-fill="#2563eb"]').click();
+
+  // Label the box.
+  await page.mouse.dblclick(230, 200);
+  const input = page.locator('textarea.text-input');
+  await expect(input).toBeVisible();
+  await input.fill('pump');
+  await input.press('Enter');
+  await expect(input).not.toBeVisible();
+
+  // No white inside the box yet (default label matches the ink border).
+  expect((await colorsNear(page, 230, 200, 6)).some(isWhite)).toBe(false);
+
+  // Picking white text paints the label white on the blue fill.
+  await page.locator('[data-text-color="#ffffff"]').click();
+  await expect(page.locator('[data-text-color="#ffffff"]')).toHaveClass(/active/);
+  expect((await colorsNear(page, 230, 200, 6)).some(isWhite)).toBe(true);
+
+  // The border stays ink — text color is independent of the stroke.
+  expect((await colorsNear(page, 230, 140, 3)).some(isDark)).toBe(true);
+
+  // "Auto" returns the label to following the border color (no white left).
+  await page.locator('[data-text-color="auto"]').click();
+  await expect(page.locator('[data-text-color="auto"]')).toHaveClass(/active/);
+  expect((await colorsNear(page, 230, 200, 6)).some(isWhite)).toBe(false);
 });

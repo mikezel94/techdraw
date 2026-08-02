@@ -22,6 +22,7 @@ import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './labelFont';
 const TEXT_FONT = '20px sans-serif';
 const TEXT_FONT_SIZE = 20;
 const INK_COLOR = '#1e1e1e';
+const WHITE_COLOR = '#ffffff';
 const SHAPE_COLORS = ['#dc2626', '#d97706', '#16a34a', '#0d9488', '#2563eb', '#7c3aed', '#db2777'];
 const EXTEND_GAP = 100;
 const CHIP_SIZE = 26;
@@ -386,6 +387,7 @@ export default function App() {
       height: source.height,
       ...(source.color ? { color: source.color } : {}),
       ...(source.fill ? { fill: source.fill } : {}),
+      ...(source.textColor ? { textColor: source.textColor } : {}),
     };
     const connector: ArrowElement = {
       id: genId(),
@@ -426,6 +428,20 @@ export default function App() {
         if (fill) return { ...e, fill };
         const cleared = { ...e };
         delete cleared.fill;
+        return cleared;
+      }),
+    );
+  };
+
+  const applyTextColor = (textColor: string | null) => {
+    if (selectedIds.size === 0) return;
+    pushHistory(elements);
+    setElements(
+      elements.map((e) => {
+        if (!selectedIds.has(e.id) || (e.type !== 'rect' && e.type !== 'ellipse')) return e;
+        if (textColor) return { ...e, textColor };
+        const cleared = { ...e };
+        delete cleared.textColor;
         return cleared;
       }),
     );
@@ -543,6 +559,8 @@ export default function App() {
   const currentColor = selectedColors.size === 1 ? [...selectedColors][0] : undefined;
   const selectedFills = new Set(colorableSelected.map((e) => e.fill ?? null));
   const currentFill = selectedFills.size === 1 ? [...selectedFills][0] : undefined;
+  const selectedTextColors = new Set(colorableSelected.map((e) => e.textColor ?? null));
+  const currentTextColor = selectedTextColors.size === 1 ? [...selectedTextColors][0] : undefined;
   const selectedScales = new Set(colorableSelected.map((e) => e.fontScale ?? 'medium'));
   const currentScale = selectedScales.size === 1 ? [...selectedScales][0] : undefined;
   let paletteScreen: { left: number; top: number; below: boolean } | null = null;
@@ -690,6 +708,35 @@ export default function App() {
               style={{ background: c }}
               title={`Fill ${c}`}
               onClick={() => applyFill(c)}
+            />
+          ))}
+          <div className="palette-divider" />
+          <button
+            type="button"
+            className={`color-swatch text-swatch-auto${currentTextColor === null ? ' active' : ''}`}
+            data-text-color="auto"
+            title="Label: auto (match border)"
+            onClick={() => applyTextColor(null)}
+          >
+            <span>A</span>
+          </button>
+          <button
+            type="button"
+            className={`color-swatch${currentTextColor === WHITE_COLOR ? ' active' : ''}`}
+            data-text-color={WHITE_COLOR}
+            style={{ background: WHITE_COLOR }}
+            title="White label"
+            onClick={() => applyTextColor(WHITE_COLOR)}
+          />
+          {SHAPE_COLORS.map((c) => (
+            <button
+              key={`text-${c}`}
+              type="button"
+              className={`color-swatch${currentTextColor === c ? ' active' : ''}`}
+              data-text-color={c}
+              style={{ background: c }}
+              title={`Label ${c}`}
+              onClick={() => applyTextColor(c)}
             />
           ))}
           <div className="palette-divider" />
