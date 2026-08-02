@@ -66,6 +66,7 @@ interface ToolbarProps {
   canUndo: boolean;
   canRedo: boolean;
   elementCount: number;
+  onNewDrawing: () => void;
 }
 
 export default function Toolbar({
@@ -76,6 +77,7 @@ export default function Toolbar({
   canUndo,
   canRedo,
   elementCount,
+  onNewDrawing,
 }: ToolbarProps) {
   return (
     <div className="toolbar">
@@ -108,6 +110,21 @@ export default function Toolbar({
         <ToolIcon>
           <polyline points="15 14 20 9 15 4" />
           <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
+        </ToolIcon>
+      </button>
+      <div className="divider" />
+      <button
+        type="button"
+        onClick={onNewDrawing}
+        title="New drawing (clears canvas and saved copy)"
+        aria-label="New drawing"
+        data-testid="new-drawing"
+      >
+        <ToolIcon>
+          <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" />
+          <polyline points="14 3 14 8 19 8" />
+          <line x1="12" y1="12" x2="12" y2="17" />
+          <line x1="9.5" y1="14.5" x2="14.5" y2="14.5" />
         </ToolIcon>
       </button>
       <div className="divider" />

@@ -18,6 +18,7 @@ import { genId } from './types';
 import type { Camera } from './camera';
 import { DEFAULT_CAMERA, clampZoom } from './camera';
 import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './labelFont';
+import { clearProject, loadProject, saveProject } from './storage';
 
 const TEXT_FONT = '20px sans-serif';
 const TEXT_FONT_SIZE = 20;
@@ -26,6 +27,8 @@ const WHITE_COLOR = '#ffffff';
 const SHAPE_COLORS = ['#dc2626', '#d97706', '#16a34a', '#0d9488', '#2563eb', '#7c3aed', '#db2777'];
 const EXTEND_GAP = 100;
 const CHIP_SIZE = 26;
+const AUTOSAVE_DEBOUNCE_MS = 800;
+const SAVE_FLASH_MS = 2000;
 // "A" glyph sizes used on the S/M/L palette buttons.
 const FONT_SCALE_BUTTON_SIZES: Record<FontScale, number> = { small: 10, medium: 13, large: 16 };
 
@@ -62,7 +65,8 @@ function measureText(text: string): { width: number; height: number } {
 }
 
 export default function App() {
-  const [elements, setElements] = useState<Element[]>([]);
+  const [restored] = useState(loadProject);
+  const [elements, setElements] = useState<Element[]>(() => restored?.elements ?? []);
   const [draft, setDraft] = useState<Element | null>(null);
   const [tool, setTool] = useState<Tool>('pencil');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -75,12 +79,15 @@ export default function App() {
     isShapeLabel?: boolean;
   } | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [camera, setCamera] = useState<Camera>(DEFAULT_CAMERA);
-  const [gridEnabled, setGridEnabled] = useState(true);
-  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [camera, setCamera] = useState<Camera>(() => restored?.camera ?? DEFAULT_CAMERA);
+  const [gridEnabled, setGridEnabled] = useState(() => restored?.gridEnabled ?? true);
+  const [snapEnabled, setSnapEnabled] = useState(() => restored?.snapEnabled ?? true);
   const [gridSize] = useState(20);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [extendHover, setExtendHover] = useState(false);
+  const [restoredAt, setRestoredAt] = useState<string | null>(() => restored?.savedAt ?? null);
+  const [saveFlash, setSaveFlash] = useState(false);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
   const dragBaseRef = useRef<Element[] | null>(null);
   const dragSelectedRef = useRef<Set<string>>(new Set());
@@ -89,6 +96,7 @@ export default function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const paletteRef = useRef<HTMLDivElement | null>(null);
   const [paletteHalfW, setPaletteHalfW] = useState(0);
+  const skipFirstSaveRef = useRef(true);
 
   const pushHistory = (snapshot: Element[]) => {
     setPast((p) => [...p, snapshot]);
@@ -125,6 +133,56 @@ export default function App() {
     setSelectedIds(new Set());
     setDraft(null);
     setExtendHover(false);
+  };
+
+  // Debounced auto-save: any committed change to the scene, camera, or grid
+  // toggles is persisted shortly after the last edit settles.
+  useEffect(() => {
+    if (skipFirstSaveRef.current) {
+      skipFirstSaveRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (elements.length === 0) {
+        clearProject();
+        return;
+      }
+      const result = saveProject({ elements, camera, gridEnabled, snapEnabled });
+      if (result.ok) {
+        setStorageWarning(null);
+        setSaveFlash(true);
+      } else {
+        setStorageWarning(
+          result.reason === 'quota'
+            ? 'Storage is full — your changes could not be saved.'
+            : 'Local storage is unavailable — your changes will be lost on refresh.',
+        );
+      }
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [elements, camera, gridEnabled, snapEnabled]);
+
+  useEffect(() => {
+    if (!saveFlash) return;
+    const timer = setTimeout(() => setSaveFlash(false), SAVE_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [saveFlash]);
+
+  const newDrawing = () => {
+    if (!window.confirm('Start a new drawing? This clears the canvas and the saved copy.')) return;
+    clearProject();
+    setPast([]);
+    setFuture([]);
+    setElements([]);
+    setSelectedIds(new Set());
+    setDraft(null);
+    setEditing(null);
+    setCamera(DEFAULT_CAMERA);
+    setGridEnabled(true);
+    setSnapEnabled(true);
+    setTool('pencil');
+    setRestoredAt(null);
+    setStorageWarning(null);
   };
 
   const deleteSelection = () => {
@@ -652,6 +710,7 @@ export default function App() {
         canUndo={past.length > 0}
         canRedo={future.length > 0}
         elementCount={elements.length}
+        onNewDrawing={newDrawing}
       />
       <ZoomControls
         zoom={camera.zoom}
@@ -665,6 +724,29 @@ export default function App() {
         onToggleGrid={() => setGridEnabled((v) => !v)}
         onToggleSnap={() => setSnapEnabled((v) => !v)}
       />
+      <div
+        className={`save-indicator${saveFlash ? ' visible' : ''}`}
+        data-testid="save-indicator"
+        role="status"
+      >
+        ✓ Saved
+      </div>
+      {storageWarning && (
+        <div className="storage-warning" data-testid="storage-warning" role="alert">
+          <span>{storageWarning}</span>
+          <button type="button" aria-label="Dismiss warning" onClick={() => setStorageWarning(null)}>
+            ×
+          </button>
+        </div>
+      )}
+      {restoredAt && (
+        <div className="restore-toast" data-testid="restore-toast" role="status">
+          <span>Restored your drawing from {new Date(restoredAt).toLocaleString()}.</span>
+          <button type="button" aria-label="Dismiss" onClick={() => setRestoredAt(null)}>
+            ×
+          </button>
+        </div>
+      )}
       {paletteVisible && paletteScreen && (
         <div
           ref={paletteRef}
