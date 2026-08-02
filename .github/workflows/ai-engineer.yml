@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ai-agent:
+  qwen-agent:
     if: github.event.label.name == 'AI'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -78,7 +78,43 @@ jobs:
           }
           EOF
 
-      # ── 4. Let Qwen solve the issue ───────────────────────
+      # ── 4. Install skills (reduce token usage) ────────────
+      - name: Install caveman skill
+        run: |
+          mkdir -p ~/.qwen/skills/caveman
+          curl -fsSL -o ~/.qwen/skills/caveman/SKILL.md \
+            https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/caveman/SKILL.md
+          curl -fsSL -o ~/.qwen/skills/caveman/README.md \
+            https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/caveman/README.md
+
+      - name: Install graphify skill
+        run: |
+          mkdir -p ~/.qwen/skills/graphify
+          curl -fsSL -o ~/.qwen/skills/graphify/SKILL.md \
+            https://raw.githubusercontent.com/Graphify-Labs/graphify/main/graphify/skill.md
+
+      # ── 5. Build codebase knowledge graph ─────────────────
+      - name: Install graphify
+        run: pip install graphifyy -q --break-system-packages
+
+      - name: Build knowledge graph
+        run: |
+          python3 -c "
+          import json
+          from graphify.extract import collect_files, extract
+          from pathlib import Path
+
+          code_files = collect_files(Path('.'))
+          if code_files:
+              result = extract(code_files)
+              Path('graphify-out').mkdir(exist_ok=True)
+              Path('graphify-out/graph.json').write_text(json.dumps(result, indent=2))
+              print(f'Graph: {len(result[\"nodes\"])} nodes, {len(result[\"edges\"])} edges')
+          else:
+              print('No code files found')
+          "
+
+      # ── 6. Let Qwen solve the issue ───────────────────────
       - name: Solve issue
         env:
           BAILIAN_TOKEN_PLAN_API_KEY: ${{ secrets.BAILIAN_TOKEN_PLAN_API_KEY }}
@@ -87,7 +123,7 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           qwen -p --output-format stream-json --approval-mode yolo \
-            --append-system-prompt "Caveman mode full. Respond ultra-terse. Drop articles (a/an/the), filler (just/really/basically), pleasantries, hedging. Fragments OK. Short synonyms. No tool-call narration, no decorative tables/emoji. Technical terms exact. Code blocks unchanged. Errors quoted exact. Pattern: [thing] [action] [reason]. [next step]. This saves output tokens in CI." \
+            --append-system-prompt "Caveman mode full active. Use /caveman skill for all responses. A codebase knowledge graph exists at graphify-out/graph.json — use /graphify query to understand architecture before reading files. This saves tokens." \
             "You are solving GitHub issue #${ISSUE_NUMBER}.
 
           Title: ${ISSUE_TITLE}
@@ -100,16 +136,9 @@ jobs:
           - Make the necessary code changes
           - Run 'npm run build' to verify the build passes
           - If tests exist, run 'npm test' and make sure they pass
-          - Do NOT commit — just leave the changes in the working tree
-          - Also create a file 'screenshot-demo.mjs' in the project root:
-            a standalone Node.js Playwright script that launches chromium,
-            opens http://localhost:4173, exercises the feature you just
-            implemented (draw shapes, click buttons, set colors, etc.),
-            waits for the canvas to render, then saves a screenshot to
-            'screenshot.png'. This script is for CI demo only — it will
-            NOT be committed to the repo."
+          - Do NOT commit — just leave the changes in the working tree"
 
-      # ── 5. Commit & push (exclude screenshot script) ──────
+      # ── 7. Commit & push ─────────────────────────────────
       - name: Commit and push
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -118,7 +147,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git reset HEAD screenshot-demo.mjs screenshot.png 2>/dev/null || true
+          git reset HEAD graphify-out/ 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
@@ -126,35 +155,7 @@ jobs:
           git commit -m "fix: resolve #${ISSUE_NUMBER} — ${ISSUE_TITLE}"
           git push
 
-      # ── 6. Screenshot with Playwright ─────────────────────
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browser
-        run: npx playwright install chromium --with-deps
-
-      - name: Build
-        run: npm run build
-
-      - name: Capture screenshot
-        run: |
-          npx vite preview --port 4173 &
-          SERVER_PID=$!
-          sleep 3
-
-          if [ -f screenshot-demo.mjs ]; then
-            node screenshot-demo.mjs
-          else
-            npx playwright screenshot \
-              --viewport-size="1280,800" \
-              --full-page \
-              http://localhost:4173 \
-              screenshot.png
-          fi
-
-          kill $SERVER_PID 2>/dev/null || true
-
-      # ── 7. Create PR with screenshot ──────────────────────
+      # ── 8. Create PR ─────────────────────────────────────
       - name: Create pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -162,17 +163,6 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           BRANCH: ai/issue-${{ github.event.issue.number }}
         run: |
-          SCREENSHOT_SECTION=""
-          if [ -f screenshot.png ]; then
-            SCREENSHOT_URL=$(curl -s -F 'file=@screenshot.png' https://0x0.st)
-            if [ -n "$SCREENSHOT_URL" ]; then
-              SCREENSHOT_SECTION="
-
-          ### Screenshot
-          ![AI solution screenshot](${SCREENSHOT_URL})"
-            fi
-          fi
-
           gh pr create \
             --head "$BRANCH" \
             --title "fix: resolve #${ISSUE_NUMBER} — ${ISSUE_TITLE}" \
@@ -181,6 +171,5 @@ jobs:
           Automated fix for #${ISSUE_NUMBER}: **${ISSUE_TITLE}**
 
           Generated by AI Engineer workflow.
-          ${SCREENSHOT_SECTION}
 
           Closes #${ISSUE_NUMBER}"
