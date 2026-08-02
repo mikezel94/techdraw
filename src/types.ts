@@ -7,6 +7,8 @@ interface BaseElement {
   id: string;
 }
 
+export type FontScale = 'small' | 'medium' | 'large';
+
 export interface PencilElement extends BaseElement {
   type: 'pencil';
   points: Point[];
@@ -20,6 +22,7 @@ export interface RectElement extends BaseElement {
   height: number;
   text?: string;
   color?: string;
+  fontScale?: FontScale;
 }
 
 export interface EllipseElement extends BaseElement {
@@ -30,6 +33,7 @@ export interface EllipseElement extends BaseElement {
   height: number;
   text?: string;
   color?: string;
+  fontScale?: FontScale;
 }
 
 export interface LineElement extends BaseElement {

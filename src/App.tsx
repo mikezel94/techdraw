@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import Canvas from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import ZoomControls from './components/ZoomControls';
@@ -8,6 +9,7 @@ import type {
   ArrowElement,
   Element,
   EllipseElement,
+  FontScale,
   RectElement,
   TextElement,
   Tool,
@@ -15,12 +17,16 @@ import type {
 import { genId } from './types';
 import type { Camera } from './camera';
 import { DEFAULT_CAMERA, clampZoom } from './camera';
+import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './labelFont';
 
 const TEXT_FONT = '20px sans-serif';
+const TEXT_FONT_SIZE = 20;
 const INK_COLOR = '#1e1e1e';
 const SHAPE_COLORS = ['#dc2626', '#d97706', '#16a34a', '#0d9488', '#2563eb', '#7c3aed', '#db2777'];
-const EXTEND_GAP = 60;
+const EXTEND_GAP = 100;
 const CHIP_SIZE = 26;
+// "A" glyph sizes used on the S/M/L palette buttons.
+const FONT_SCALE_BUTTON_SIZES: Record<FontScale, number> = { small: 10, medium: 13, large: 16 };
 
 function translateElement(el: Element, dx: number, dy: number): Element {
   switch (el.type) {
@@ -67,12 +73,12 @@ export default function App() {
     shapeId?: string;
     isShapeLabel?: boolean;
   } | null>(null);
+  const [editValue, setEditValue] = useState('');
   const [camera, setCamera] = useState<Camera>(DEFAULT_CAMERA);
   const [gridEnabled, setGridEnabled] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [gridSize] = useState(20);
   const [spaceHeld, setSpaceHeld] = useState(false);
-  const [extendFromId, setExtendFromId] = useState<string | null>(null);
   const [extendHover, setExtendHover] = useState(false);
 
   const dragBaseRef = useRef<Element[] | null>(null);
@@ -91,7 +97,9 @@ export default function App() {
     setElements([...elements, el]);
     setDraft(null);
     setExtendHover(false);
-    setExtendFromId(el.type === 'rect' ? el.id : null);
+    // Tools are one-shot: drop back to select mode with the new element selected.
+    setTool('select');
+    setSelectedIds(new Set([el.id]));
   };
 
   const undo = () => {
@@ -102,7 +110,6 @@ export default function App() {
     setElements(previous);
     setSelectedIds(new Set());
     setDraft(null);
-    setExtendFromId(null);
     setExtendHover(false);
   };
 
@@ -114,7 +121,6 @@ export default function App() {
     setElements(next);
     setSelectedIds(new Set());
     setDraft(null);
-    setExtendFromId(null);
     setExtendHover(false);
   };
 
@@ -140,13 +146,6 @@ export default function App() {
         }),
     );
     setSelectedIds(new Set());
-    setExtendFromId(null);
-    setExtendHover(false);
-  };
-
-  const handleSelect = (ids: Set<string>) => {
-    setSelectedIds(ids);
-    setExtendFromId(null);
     setExtendHover(false);
   };
 
@@ -225,12 +224,15 @@ export default function App() {
   const handleTextPlace = (x: number, y: number) => {
     textCancelledRef.current = false;
     textReadyRef.current = false;
+    setEditValue('');
     setEditing({ x, y });
   };
 
   const handleEditLabel = (shapeId: string, x: number, y: number) => {
     textCancelledRef.current = false;
     textReadyRef.current = false;
+    const shape = elements.find((e) => e.id === shapeId);
+    setEditValue(shape && 'text' in shape && shape.text ? shape.text : '');
     setEditing({ x, y, shapeId, isShapeLabel: true });
   };
 
@@ -242,21 +244,15 @@ export default function App() {
       const el = textareaRef.current;
       if (!el) return;
       el.focus();
-      if (editing.shapeId) {
-        const shape = elements.find((e) => e.id === editing.shapeId);
-        if (shape && 'text' in shape && shape.text) {
-          el.value = shape.text;
-          el.select();
-        }
-      }
+      el.select();
       textReadyRef.current = true;
     }, 0);
     return () => clearTimeout(timer);
-  }, [editing, elements]);
+  }, [editing]);
 
-  const commitText = (value: string) => {
+  const commitText = () => {
     if (!editing) return;
-    const text = value.replace(/\n/g, ' ').trim();
+    const text = editValue.replace(/\n/g, ' ').trim();
     if (editing.shapeId) {
       if (text.length > 0) {
         pushHistory(elements);
@@ -300,11 +296,13 @@ export default function App() {
       };
       commitElement(el);
     }
+    setTool('select');
     setEditing(null);
   };
 
   const cancelText = () => {
     textCancelledRef.current = true;
+    setTool('select');
     setEditing(null);
   };
 
@@ -344,10 +342,16 @@ export default function App() {
     });
   };
 
-  const extendBox = () => {
-    const source = extendFromId
-      ? elements.find((e): e is RectElement => e.id === extendFromId && e.type === 'rect')
+  // The extend suggestion targets a lone selected box.
+  const selectedElement =
+    selectedIds.size === 1 ? elements.find((e) => e.id === [...selectedIds][0]) : undefined;
+  const extendRect =
+    selectedElement && selectedElement.type === 'rect' && !draft && !editing
+      ? selectedElement
       : undefined;
+
+  const extendBox = () => {
+    const source = extendRect;
     if (!source) return;
     pushHistory(elements);
     const midY = source.y + source.height / 2;
@@ -371,7 +375,8 @@ export default function App() {
       endBinding: { elementId: next.id },
     };
     setElements([...elements, next, connector]);
-    setExtendFromId(next.id);
+    // Selecting the new box moves the suggestion onto it, so chaining continues.
+    setSelectedIds(new Set([next.id]));
     setExtendHover(false);
   };
 
@@ -385,6 +390,17 @@ export default function App() {
         const cleared = { ...e };
         delete cleared.color;
         return cleared;
+      }),
+    );
+  };
+
+  const applyFontScale = (scale: FontScale) => {
+    if (selectedIds.size === 0) return;
+    pushHistory(elements);
+    setElements(
+      elements.map((e) => {
+        if (!selectedIds.has(e.id) || (e.type !== 'rect' && e.type !== 'ellipse')) return e;
+        return { ...e, fontScale: scale };
       }),
     );
   };
@@ -410,11 +426,11 @@ export default function App() {
         redo();
       } else if (mod && ev.key.toLowerCase() === 'a') {
         ev.preventDefault();
-        handleSelect(new Set(elements.map((e) => e.id)));
+        setSelectedIds(new Set(elements.map((e) => e.id)));
       } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
         deleteSelection();
       } else if (ev.key === 'Escape') {
-        handleSelect(new Set());
+        setSelectedIds(new Set());
       } else if (ev.key === '=' || ev.key === '+') {
         zoomIn();
       } else if (ev.key === '-') {
@@ -441,6 +457,30 @@ export default function App() {
     ? { x: editing.x * camera.zoom + camera.x, y: editing.y * camera.zoom + camera.y }
     : null;
 
+  // The label editor mirrors the exact size the canvas will render, so what
+  // you see while typing is what you get after committing.
+  const editingShape =
+    editing && editing.shapeId ? elements.find((e) => e.id === editing.shapeId) : undefined;
+  let textareaStyle: CSSProperties = { left: editingScreen?.x, top: editingScreen?.y };
+  if (editingShape && (editingShape.type === 'rect' || editingShape.type === 'ellipse')) {
+    const size = fitLabelFontSize(
+      editValue || 'Text',
+      editingShape.width,
+      editingShape.height,
+      editingShape.fontScale,
+      editingShape.type === 'ellipse',
+    );
+    textareaStyle = {
+      ...textareaStyle,
+      fontSize: size * camera.zoom,
+      width: editingShape.width * camera.zoom,
+      minWidth: 0,
+      fontFamily: LABEL_FONT_FAMILY,
+    };
+  } else {
+    textareaStyle = { ...textareaStyle, fontSize: TEXT_FONT_SIZE * camera.zoom };
+  }
+
   // Floating color palette above the selected shape(s)
   const colorableSelected = elements.filter(
     (e): e is RectElement | EllipseElement =>
@@ -464,6 +504,8 @@ export default function App() {
   }
   const selectedColors = new Set(colorableSelected.map((e) => e.color ?? null));
   const currentColor = selectedColors.size === 1 ? [...selectedColors][0] : undefined;
+  const selectedScales = new Set(colorableSelected.map((e) => e.fontScale ?? 'medium'));
+  const currentScale = selectedScales.size === 1 ? [...selectedScales][0] : undefined;
   let paletteScreen: { left: number; top: number; below: boolean } | null = null;
   if (paletteBox) {
     const topEdge = paletteBox.y * camera.zoom + camera.y;
@@ -475,11 +517,8 @@ export default function App() {
     };
   }
 
-  // "Extend to next box" suggestion trailing the most recently created box
-  const extendRect = extendFromId
-    ? elements.find((e): e is RectElement => e.id === extendFromId && e.type === 'rect')
-    : undefined;
-  const chipVisible = !!extendRect && !draft && !editing;
+  // Screen positions for the "extend to next box" suggestion
+  const chipVisible = !!extendRect;
   const chipScreen =
     chipVisible && extendRect
       ? {
@@ -516,7 +555,7 @@ export default function App() {
         extendPreview={extendPreview}
         onDraftChange={setDraft}
         onCommit={commitElement}
-        onSelect={handleSelect}
+        onSelect={setSelectedIds}
         onDragStart={handleDragStart}
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
@@ -529,7 +568,7 @@ export default function App() {
         tool={tool}
         onToolChange={(t) => {
           setTool(t);
-          handleSelect(new Set());
+          setSelectedIds(new Set());
         }}
         onUndo={undo}
         onRedo={redo}
@@ -574,6 +613,20 @@ export default function App() {
               onClick={() => applyColor(c)}
             />
           ))}
+          <div className="palette-divider" />
+          {FONT_SCALES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`font-scale${currentScale === s.id ? ' active' : ''}`}
+              data-testid={`font-scale-${s.id}`}
+              title={s.title}
+              aria-label={s.title}
+              onClick={() => applyFontScale(s.id)}
+            >
+              <span style={{ fontSize: FONT_SCALE_BUTTON_SIZES[s.id] }}>A</span>
+            </button>
+          ))}
         </div>
       )}
       {chipScreen && (
@@ -594,19 +647,21 @@ export default function App() {
         <textarea
           ref={textareaRef}
           className={`text-input${editing.isShapeLabel ? ' text-input-centered' : ''}`}
-          style={{ left: editingScreen.x, top: editingScreen.y }}
+          style={textareaStyle}
           rows={1}
+          value={editValue}
+          onChange={(e) => setEditValue(e.currentTarget.value)}
           onKeyDown={(e) => {
             e.stopPropagation();
             if (e.key === 'Enter') {
               e.preventDefault();
-              commitText(e.currentTarget.value);
+              commitText();
             } else if (e.key === 'Escape') {
               e.preventDefault();
               cancelText();
             }
           }}
-          onBlur={(e) => {
+          onBlur={() => {
             if (!textReadyRef.current) {
               // Focus was stolen by the click sequence before we could
               // establish it — reclaim instead of committing empty text.
@@ -617,7 +672,7 @@ export default function App() {
               textCancelledRef.current = false;
               return;
             }
-            commitText(e.currentTarget.value);
+            commitText();
           }}
         />
       )}

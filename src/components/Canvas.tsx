@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ArrowBinding, ArrowElement, Element, Point, Tool } from '../types';
+import type {
+  ArrowBinding,
+  ArrowElement,
+  Element,
+  EllipseElement,
+  Point,
+  RectElement,
+  Tool,
+} from '../types';
 import { genId } from '../types';
 import type { Camera } from '../camera';
 import { screenToWorld, snapPointToGrid, getGridStep } from '../camera';
 import { drawDimension, hitDimension, bboxOfDimension, DIM_OFFSET } from '../dimensions';
+import { fitLabelFontSize, LABEL_FONT_FAMILY, LABEL_PAD } from '../labelFont';
 
 const STROKE = '#1e1e1e';
 const SELECT_COLOR = '#4a90d9';
@@ -298,25 +307,23 @@ function bboxOf(el: Element, elements: Element[]): { x: number; y: number; w: nu
 
 function drawShapeText(
   ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
+  el: RectElement | EllipseElement,
   color: string,
 ) {
+  const { x, y, width: w, height: h, text } = el;
+  if (!text) return;
+  const size = fitLabelFontSize(text, w, h, el.fontScale, el.type === 'ellipse');
   ctx.save();
-  ctx.font = '16px sans-serif';
+  ctx.font = `${size}px ${LABEL_FONT_FAMILY}`;
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const cx = x + w / 2;
-  const cy = y + h / 2;
-  const pad = 8;
+  // Clip keeps oversized labels (e.g. large scale on a tiny box) inside the shape.
+  const pad = Math.min(LABEL_PAD, w / 4, h / 4);
   ctx.beginPath();
-  ctx.rect(x + pad, y + pad, w - pad * 2, h - pad * 2);
+  ctx.rect(x + pad, y + pad, Math.max(w - pad * 2, 1), Math.max(h - pad * 2, 1));
   ctx.clip();
-  ctx.fillText(text, cx, cy);
+  ctx.fillText(text, x + w / 2, y + h / 2);
   ctx.restore();
 }
 
@@ -342,7 +349,7 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.strokeRect(el.x, el.y, el.width, el.height);
-      if (el.text) drawShapeText(ctx, el.text, el.x, el.y, el.width, el.height, color);
+      drawShapeText(ctx, el, color);
       break;
     }
     case 'ellipse': {
@@ -352,7 +359,7 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
       ctx.beginPath();
       ctx.ellipse(el.x + el.width / 2, el.y + el.height / 2, el.width / 2, el.height / 2, 0, 0, Math.PI * 2);
       ctx.stroke();
-      if (el.text) drawShapeText(ctx, el.text, el.x, el.y, el.width, el.height, color);
+      drawShapeText(ctx, el, color);
       break;
     }
     case 'line':
@@ -743,6 +750,14 @@ export default function Canvas({
     }
     if (e.button !== 0) return;
 
+    // Double-click detection (shared by select mode and the shape tools,
+    // which treat a double-click on a shape as "label it")
+    const now = Date.now();
+    const last = lastClickRef.current;
+    const isDoubleClick =
+      now - last.time < 400 && Math.hypot(p.x - last.x, p.y - last.y) < 10 / camera.zoom;
+    lastClickRef.current = { time: now, x: p.x, y: p.y };
+
     // Text tool: no pointer capture so the textarea can receive focus
     if (tool === 'text') {
       const hit = hitTest(elements, p.x, p.y);
@@ -774,13 +789,7 @@ export default function Canvas({
 
       const hit = hitTest(elements, p.x, p.y);
 
-      // Double-click detection: edit shape labels or standalone text
-      const now = Date.now();
-      const last = lastClickRef.current;
-      const isDoubleClick =
-        now - last.time < 400 && Math.hypot(p.x - last.x, p.y - last.y) < 10 / camera.zoom;
-      lastClickRef.current = { time: now, x: p.x, y: p.y };
-
+      // Double-click: edit shape labels or standalone text
       if (isDoubleClick && hit) {
         if (hit.type === 'rect' || hit.type === 'ellipse' || hit.type === 'text') {
           onEditLabel(hit.id, hit.x + hit.width / 2, hit.y + hit.height / 2);
@@ -817,6 +826,19 @@ export default function Canvas({
         setMarqueeBox({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       }
       return;
+    }
+
+    // Smart shortcut: with a shape tool active, double-clicking an existing
+    // shape means "label it" rather than drawing on top of it.
+    if (
+      isDoubleClick &&
+      (tool === 'rectangle' || tool === 'ellipse' || tool === 'line' || tool === 'arrow')
+    ) {
+      const hit = hitTest(elements, p.x, p.y);
+      if (hit && (hit.type === 'rect' || hit.type === 'ellipse' || hit.type === 'text')) {
+        onEditLabel(hit.id, hit.x + hit.width / 2, hit.y + hit.height / 2);
+        return;
+      }
     }
 
     canvasRef.current?.setPointerCapture(e.pointerId);

@@ -47,14 +47,24 @@ canvas {
   border: 1px solid transparent;
   background: transparent;
   border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 13px;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #1e1e1e;
   cursor: pointer;
+  transition: background 0.1s ease, transform 0.1s ease;
+}
+
+.toolbar button svg {
+  display: block;
 }
 
 .toolbar button:hover:not(:disabled) {
   background: #f0f0f0;
+  transform: translateY(-1px);
 }
 
 .toolbar button.active {
@@ -197,6 +207,42 @@ canvas {
 
 .color-swatch.active {
   box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #4a90d9;
+}
+
+.palette-divider {
+  width: 1px;
+  height: 18px;
+  background: #e0e0e0;
+}
+
+.font-scale {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1e1e1e;
+  cursor: pointer;
+  transition: background 0.1s ease, transform 0.1s ease;
+}
+
+.font-scale span {
+  font-weight: 600;
+  line-height: 1;
+}
+
+.font-scale:hover {
+  background: #f0f0f0;
+  transform: translateY(-1px);
+}
+
+.font-scale.active {
+  background: #dbeafe;
+  border-color: #93c5fd;
 }
 
 /* ---- Extend-to-next-box chip (trails the newest box) ---- */
