@@ -86,7 +86,7 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          qwen -p \
+          qwen -p --output-format stream-json --approval-mode yolo \
             "You are solving GitHub issue #${ISSUE_NUMBER}.
 
           Title: ${ISSUE_TITLE}
