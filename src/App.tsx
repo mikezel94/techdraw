@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import Canvas from './components/Canvas';
 import Toolbar from './components/Toolbar';
@@ -86,6 +86,8 @@ export default function App() {
   const textCancelledRef = useRef(false);
   const textReadyRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const paletteRef = useRef<HTMLDivElement | null>(null);
+  const [paletteHalfW, setPaletteHalfW] = useState(0);
 
   const pushHistory = (snapshot: Element[]) => {
     setPast((p) => [...p, snapshot]);
@@ -383,6 +385,7 @@ export default function App() {
       width: source.width,
       height: source.height,
       ...(source.color ? { color: source.color } : {}),
+      ...(source.fill ? { fill: source.fill } : {}),
     };
     const connector: ArrowElement = {
       id: genId(),
@@ -409,6 +412,20 @@ export default function App() {
         if (color) return { ...e, color };
         const cleared = { ...e };
         delete cleared.color;
+        return cleared;
+      }),
+    );
+  };
+
+  const applyFill = (fill: string | null) => {
+    if (selectedIds.size === 0) return;
+    pushHistory(elements);
+    setElements(
+      elements.map((e) => {
+        if (!selectedIds.has(e.id) || (e.type !== 'rect' && e.type !== 'ellipse')) return e;
+        if (fill) return { ...e, fill };
+        const cleared = { ...e };
+        delete cleared.fill;
         return cleared;
       }),
     );
@@ -524,18 +541,38 @@ export default function App() {
   }
   const selectedColors = new Set(colorableSelected.map((e) => e.color ?? null));
   const currentColor = selectedColors.size === 1 ? [...selectedColors][0] : undefined;
+  const selectedFills = new Set(colorableSelected.map((e) => e.fill ?? null));
+  const currentFill = selectedFills.size === 1 ? [...selectedFills][0] : undefined;
   const selectedScales = new Set(colorableSelected.map((e) => e.fontScale ?? 'medium'));
   const currentScale = selectedScales.size === 1 ? [...selectedScales][0] : undefined;
   let paletteScreen: { left: number; top: number; below: boolean } | null = null;
   if (paletteBox) {
     const topEdge = paletteBox.y * camera.zoom + camera.y;
     const below = topEdge < 64;
+    // Keep the (centered) palette inside the viewport when the selection
+    // sits near a screen edge — otherwise its swatches clip off-screen.
+    const centerX = (paletteBox.x + paletteBox.w / 2) * camera.zoom + camera.x;
+    const margin = 8;
+    const left = Math.max(
+      paletteHalfW + margin,
+      Math.min(centerX, window.innerWidth - paletteHalfW - margin),
+    );
     paletteScreen = {
-      left: (paletteBox.x + paletteBox.w / 2) * camera.zoom + camera.x,
+      left,
       top: below ? (paletteBox.y + paletteBox.h) * camera.zoom + camera.y + 12 : topEdge - 12,
       below,
     };
   }
+
+  // Measure the palette so its centered position can be clamped to the viewport.
+  useLayoutEffect(() => {
+    if (!paletteVisible) {
+      setPaletteHalfW(0);
+      return;
+    }
+    const el = paletteRef.current;
+    if (el) setPaletteHalfW(el.offsetWidth / 2);
+  }, [paletteVisible]);
 
   // Screen positions for the "extend to next box" suggestion
   const chipVisible = !!extendRect;
@@ -612,6 +649,7 @@ export default function App() {
       />
       {paletteVisible && paletteScreen && (
         <div
+          ref={paletteRef}
           className={`color-palette${paletteScreen.below ? ' below' : ''}`}
           data-testid="color-palette"
           style={{ left: paletteScreen.left, top: paletteScreen.top }}
@@ -633,6 +671,25 @@ export default function App() {
               style={{ background: c }}
               title={c}
               onClick={() => applyColor(c)}
+            />
+          ))}
+          <div className="palette-divider" />
+          <button
+            type="button"
+            className={`color-swatch fill-swatch-none${currentFill === null ? ' active' : ''}`}
+            data-fill="none"
+            title="No fill"
+            onClick={() => applyFill(null)}
+          />
+          {SHAPE_COLORS.map((c) => (
+            <button
+              key={`fill-${c}`}
+              type="button"
+              className={`color-swatch${currentFill === c ? ' active' : ''}`}
+              data-fill={c}
+              style={{ background: c }}
+              title={`Fill ${c}`}
+              onClick={() => applyFill(c)}
             />
           ))}
           <div className="palette-divider" />
