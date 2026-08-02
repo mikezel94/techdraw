@@ -15,13 +15,13 @@ import type {
   Tool,
 } from './types';
 import { genId } from './types';
-import type { Camera } from './camera';
-import { DEFAULT_CAMERA, clampZoom } from './camera';
-import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './labelFont';
-import { clearProject, loadProject, saveProject } from './storage';
-import { exportPng, exportSvg } from './export';
-import { downloadProject, readProjectFile } from './projectFile';
-import type { ProjectFile } from './projectFile';
+import type { Camera } from './lib/camera';
+import { DEFAULT_CAMERA, clampZoom } from './lib/camera';
+import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './lib/labelFont';
+import { clearProject, loadProject, saveProject } from './lib/storage';
+import { exportPng, exportSvg } from './lib/export';
+import { downloadProject, readProjectFile } from './lib/projectFile';
+import type { ProjectFile } from './lib/projectFile';
 import type { PngExportOptions } from './components/Toolbar';
 
 const TEXT_FONT = '20px sans-serif';

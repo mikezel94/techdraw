@@ -1,5 +1,5 @@
 import type { Camera } from './camera';
-import type { Element } from './types';
+import type { Element } from '../types';
 
 declare const __APP_VERSION__: string;
 

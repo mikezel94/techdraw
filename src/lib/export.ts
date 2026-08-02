@@ -4,7 +4,7 @@ import type {
   Element,
   EllipseElement,
   RectElement,
-} from './types';
+} from '../types';
 import {
   ARROW_HEAD_MAX,
   ARROW_HEAD_MIN,
@@ -14,7 +14,7 @@ import {
   arrowControls,
   bboxOf,
   drawElement,
-} from './components/Canvas';
+} from '../components/Canvas';
 import { computeDimensionGeometry, resolveAnchor } from './dimensions';
 import { LABEL_FONT_FAMILY, fitLabelFontSize } from './labelFont';
 

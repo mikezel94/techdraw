@@ -9,10 +9,10 @@ import type {
   Tool,
 } from '../types';
 import { genId } from '../types';
-import type { Camera } from '../camera';
-import { screenToWorld, snapPointToGrid, getGridStep } from '../camera';
-import { drawDimension, hitDimension, bboxOfDimension, DIM_OFFSET } from '../dimensions';
-import { fitLabelFontSize, LABEL_FONT_FAMILY, LABEL_PAD } from '../labelFont';
+import type { Camera } from '../lib/camera';
+import { screenToWorld, snapPointToGrid, getGridStep } from '../lib/camera';
+import { drawDimension, hitDimension, bboxOfDimension, DIM_OFFSET } from '../lib/dimensions';
+import { fitLabelFontSize, LABEL_FONT_FAMILY, LABEL_PAD } from '../lib/labelFont';
 
 export const STROKE = '#1e1e1e';
 const SELECT_COLOR = '#4a90d9';

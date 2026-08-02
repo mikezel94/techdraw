@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Tool } from '../types';
-import { PROJECT_FILE_EXT } from '../projectFile';
+import { PROJECT_FILE_EXT } from '../lib/projectFile';
 
 const TOOLS: { id: Tool; name: string; title: string }[] = [
   { id: 'select', name: 'Select', title: 'Select & Move (V)' },

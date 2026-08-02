@@ -1,4 +1,4 @@
-import type { Anchor, DimensionElement, Element, Point } from './types';
+import type { Anchor, DimensionElement, Element, Point } from '../types';
 
 const DIM_OFFSET = 30;
 const EXTENSION_OVERSHOOT = 6;

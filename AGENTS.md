@@ -37,17 +37,21 @@ src/
 │                       #   toolbar/palette/zoom/grid UI orchestration
 ├── types.ts            # Element union type (pencil | rect | ellipse | line | arrow | text | dimension),
 │                       #   Tool type, ArrowBinding, genId()
-├── camera.ts           # Camera (pan/zoom) model, screen↔world transforms, grid snapping helpers
-├── dimensions.ts       # Dimension-line geometry, rendering (drawDimension), hit-testing, bbox
-├── labelFont.ts        # Label font-size fitting logic for shape labels (S/M/L scales)
 ├── index.css           # All application styles
-└── components/
-    ├── Canvas.tsx       # <canvas> element: pointer handling, drawing loop, hit-testing, selection,
-    │                    #   marquee select, arrow endpoint dragging, grid rendering
-    ├── Toolbar.tsx      # Tool palette (select, pencil, rect, ellipse, line, arrow, text, dimension)
-    │                    #   + undo/redo buttons
-    ├── ZoomControls.tsx # Zoom in / out / reset buttons
-    └── GridControls.tsx # Grid & snap toggle buttons
+├── components/
+│   ├── Canvas.tsx       # <canvas> element: pointer handling, drawing loop, hit-testing, selection,
+│   │                    #   marquee select, arrow endpoint dragging, grid rendering
+│   ├── Toolbar.tsx      # Tool palette (select, pencil, rect, ellipse, line, arrow, text, dimension)
+│   │                    #   + undo/redo buttons
+│   ├── ZoomControls.tsx # Zoom in / out / reset buttons
+│   └── GridControls.tsx # Grid & snap toggle buttons
+└── lib/
+    ├── camera.ts        # Camera (pan/zoom) model, screen↔world transforms, grid snapping helpers
+    ├── dimensions.ts    # Dimension-line geometry, rendering (drawDimension), hit-testing, bbox
+    ├── labelFont.ts     # Label font-size fitting logic for shape labels (S/M/L scales)
+    ├── export.ts        # PNG and SVG export from the content bounding box
+    ├── storage.ts       # localStorage auto-save persistence
+    └── projectFile.ts   # .tdraw project file save/open (download + drag-and-drop)
 ```
 
 ### Key patterns
@@ -56,7 +60,7 @@ src/
 - **Element model:** A discriminated union (`Element`) keyed on `type`. Each element has a string `id` from `genId()`. Arrows carry optional `startBinding`/`endBinding` referencing other element ids.
 - **History:** Snapshot-based undo/redo — full `Element[]` arrays pushed onto `past`/`future` stacks.
 - **Rendering:** Imperative Canvas 2D drawing inside a `useEffect` / draw function in `Canvas.tsx`, not React DOM.
-- **Coordinate spaces:** World coordinates for elements; screen coordinates via `Camera` transforms (`screenToWorld` / `worldToScreen` in `camera.ts`).
+- **Coordinate spaces:** World coordinates for elements; screen coordinates via `Camera` transforms (`screenToWorld` / `worldToScreen` in `lib/camera.ts`).
 - **Tools are one-shot:** After committing an element the active tool resets to `select` and the new element is auto-selected.
 - **Text editing:** A floating `<textarea>` overlay positioned in screen space; commits on Enter/blur, cancels on Escape.
 
@@ -65,7 +69,7 @@ src/
 - **Strict TypeScript** — no `any`, no unused locals/parameters. The build (`tsc`) enforces this.
 - **No external state management** — plain `useState` / `useRef` hooks only.
 - **No component library** — hand-rolled UI with plain CSS classes.
-- **Functional style** — pure helper functions in dedicated modules (`camera.ts`, `dimensions.ts`, `labelFont.ts`); React components are thin wrappers.
+- **Functional style** — pure helper functions in dedicated modules under `lib/` (`camera.ts`, `dimensions.ts`, `labelFont.ts`); React components are thin wrappers.
 - **Testing** — Playwright e2e specs in `tests/`. Tests target `data-testid` attributes and `data-color` attributes for palette swatches; canvas-drawn content is verified with the pixel probes in `tests/helpers.ts` (see ADR 0002). Test files are named `<feature>.spec.ts`.
 - **Constants** — module-level `const` for magic numbers (colors, sizes, gaps) at the top of the file that uses them.
 - **Decisions (ADRs)** — record significant decisions in `docs/adr/` (see the section below). If you make a hard-to-reverse or non-obvious choice, add a numbered ADR and update the index.

@@ -1,4 +1,4 @@
-# techdraw
+# Tech Draw
 
 A browser-based technical drawing and diagramming tool built on the HTML5 Canvas. Create boxes, ellipses, arrows, lines, freehand sketches, text labels, and engineering-style dimension annotations on an infinite canvas with pan, zoom, and grid snapping.
 
@@ -53,14 +53,17 @@ src/
 ├── main.tsx              # React entry point
 ├── App.tsx               # Root component: state, history, shortcuts, UI
 ├── types.ts              # Element union type, Tool type, bindings
-├── camera.ts             # Pan/zoom model, screen↔world transforms, snapping
-├── dimensions.ts         # Dimension-line geometry, rendering, hit-testing
-├── labelFont.ts          # Label font-size fitting (S/M/L)
-├── storage.ts            # localStorage persistence
 ├── index.css             # Application styles
-└── components/
-    ├── Canvas.tsx         # Canvas element: pointer handling, drawing, hit-testing
-    ├── Toolbar.tsx        # Tool palette + undo/redo
-    ├── ZoomControls.tsx   # Zoom in / out / reset
-    └── GridControls.tsx   # Grid & snap toggles
+├── components/
+│   ├── Canvas.tsx         # Canvas element: pointer handling, drawing, hit-testing
+│   ├── Toolbar.tsx        # Tool palette + undo/redo
+│   ├── ZoomControls.tsx   # Zoom in / out / reset
+│   └── GridControls.tsx   # Grid & snap toggles
+└── lib/
+    ├── camera.ts          # Pan/zoom model, screen↔world transforms, snapping
+    ├── dimensions.ts      # Dimension-line geometry, rendering, hit-testing
+    ├── labelFont.ts       # Label font-size fitting (S/M/L)
+    ├── export.ts          # PNG and SVG export
+    ├── storage.ts         # localStorage persistence
+    └── projectFile.ts     # .tdraw project file save/open
 ```

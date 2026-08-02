@@ -1,5 +1,5 @@
 import type { Camera } from './camera';
-import type { Element } from './types';
+import type { Element } from '../types';
 
 export const STORAGE_KEY = 'techdraw-project';
 export const SCHEMA_VERSION = 1;

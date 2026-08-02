@@ -1,4 +1,4 @@
-import type { FontScale } from './types';
+import type { FontScale } from '../types';
 
 export const LABEL_FONT_FAMILY = 'sans-serif';
 export const LABEL_PAD = 8;
