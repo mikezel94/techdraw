@@ -66,5 +66,30 @@ src/
 - **No external state management** — plain `useState` / `useRef` hooks only.
 - **No component library** — hand-rolled UI with plain CSS classes.
 - **Functional style** — pure helper functions in dedicated modules (`camera.ts`, `dimensions.ts`, `labelFont.ts`); React components are thin wrappers.
-- **Testing** — Playwright e2e specs in `tests/`. Tests target `data-testid` attributes and `data-color` attributes for palette swatches. Test files are named `<feature>.spec.ts`.
+- **Testing** — Playwright e2e specs in `tests/`. Tests target `data-testid` attributes and `data-color` attributes for palette swatches; canvas-drawn content is verified with the pixel probes in `tests/helpers.ts` (see ADR 0002). Test files are named `<feature>.spec.ts`.
 - **Constants** — module-level `const` for magic numbers (colors, sizes, gaps) at the top of the file that uses them.
+- **Decisions (ADRs)** — record significant decisions in `docs/adr/` (see the section below). If you make a hard-to-reverse or non-obvious choice, add a numbered ADR and update the index.
+
+## Architecture Decision Records
+
+Significant decisions — especially those made by AI agents — are recorded as
+ADRs in [`docs/adr/`](./docs/adr/README.md). Read `docs/adr/README.md` for when
+to write one, the template, and the status lifecycle.
+
+Rules for agents:
+
+- One decision per file, named `NNNN-kebab-case-title.md` (next number after the
+  current highest). ADRs are immutable once accepted — supersede, don't edit.
+- Write an ADR when choosing/replacing a library or tool, settling an
+  architecture or data-model question, adopting a project-wide convention, or
+  picking one approach over reasonable alternatives. Skip it for routine code
+  the diff already explains.
+- After adding an ADR, append it to the index in `docs/adr/README.md` **and** to
+  the table below.
+
+Current decisions:
+
+| # | Title | Status |
+|---|---|---|
+| [0001](./docs/adr/0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
+| [0002](./docs/adr/0002-e2e-testing-with-canvas-pixel-probes.md) | E2E testing with canvas pixel probes | Accepted |
