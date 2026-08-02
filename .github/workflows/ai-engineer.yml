@@ -1,0 +1,175 @@
+name: AI Engineer
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ai-engineer-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  solve:
+    if: github.event.label.name == 'AI'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # ── 1. Create branch ──────────────────────────────────
+      - name: Create branch
+        run: |
+          BRANCH="ai/issue-${{ github.event.issue.number }}"
+          git checkout -b "$BRANCH"
+          git push -u origin "$BRANCH"
+
+      # ── 2. Install Qwen Code CLI ──────────────────────────
+      - name: Install Qwen Code
+        run: npm install -g @qwen-code/qwen-code
+
+      # ── 3. Configure Qwen Code model provider ─────────────
+      #    The API key itself is passed as an env var in step 4;
+      #    settings.json only declares the provider + model.
+      - name: Configure Qwen Code
+        run: |
+          mkdir -p ~/.qwen
+          cat > ~/.qwen/settings.json << 'EOF'
+          {
+            "$version": 4,
+            "modelProviders": {
+              "openai": [
+                {
+                  "id": "qwen3.8-max-preview",
+                  "name": "qwen3.8-max-preview",
+                  "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+                  "envKey": "BAILIAN_TOKEN_PLAN_API_KEY",
+                  "generationConfig": {
+                    "extra_body": { "enable_thinking": true },
+                    "contextWindowSize": 1000000
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+
+      # ── 4. Let Qwen solve the issue ───────────────────────
+      - name: Solve issue
+        env:
+          BAILIAN_TOKEN_PLAN_API_KEY: ${{ secrets.BAILIAN_TOKEN_PLAN_API_KEY }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          qwen -p \
+            "You are solving GitHub issue #${ISSUE_NUMBER}.
+
+          Title: ${ISSUE_TITLE}
+
+          Description:
+          ${ISSUE_BODY}
+
+          Instructions:
+          - Follow all conventions in AGENTS.md
+          - Make the necessary code changes
+          - Run 'npm run build' to verify the build passes
+          - If tests exist, run 'npm test' and make sure they pass
+          - Do NOT commit — just leave the changes in the working tree"
+
+      # ── 5. Commit & push ──────────────────────────────────
+      - name: Commit and push
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "fix: resolve #${ISSUE_NUMBER} — ${ISSUE_TITLE}"
+          git push
+
+      # ── 6. Screenshot with Playwright ─────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Build
+        run: npm run build
+
+      - name: Capture screenshot
+        run: |
+          npx vite preview --port 4173 &
+          SERVER_PID=$!
+          sleep 3
+
+          npx playwright screenshot \
+            --viewport-size="1280,800" \
+            --full-page \
+            http://localhost:4173 \
+            screenshot.png
+
+          kill $SERVER_PID 2>/dev/null || true
+
+      # ── 7. Push screenshot to branch ──────────────────────
+      - name: Push screenshot
+        run: |
+          if [ -f screenshot.png ]; then
+            git add screenshot.png
+            git commit -m "chore: add screenshot for #${{ github.event.issue.number }}"
+            git push
+          fi
+
+      # ── 8. Comment on issue with screenshot ───────────────
+      - name: Comment on issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          BRANCH: ai/issue-${{ github.event.issue.number }}
+        run: |
+          SCREENSHOT_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/screenshot.png"
+
+          gh issue comment "$ISSUE_NUMBER" --body "## 🤖 AI Engineer
+
+          Branch \`ai/issue-${ISSUE_NUMBER}\` has been created with a proposed fix.
+
+          ### Screenshot
+          ![AI solution screenshot](${SCREENSHOT_URL})
+
+          A pull request will be opened shortly."
+
+      # ── 9. Create PR ──────────────────────────────────────
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          BRANCH: ai/issue-${{ github.event.issue.number }}
+        run: |
+          gh pr create \
+            --head "$BRANCH" \
+            --title "fix: resolve #${ISSUE_NUMBER} — ${ISSUE_TITLE}" \
+            --body "## Summary
+
+          Automated fix for #${ISSUE_NUMBER}: **${ISSUE_TITLE}**
+
+          Generated by AI Engineer workflow.
+
+          Closes #${ISSUE_NUMBER}"
