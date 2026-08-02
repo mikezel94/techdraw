@@ -27,10 +27,13 @@ jobs:
           node-version: 22
           cache: npm
 
-      # ── 1. Create branch ──────────────────────────────────
+      # ── 1. Create branch (delete existing first) ──────────
       - name: Create branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="ai/issue-${{ github.event.issue.number }}"
+          git push origin --delete "$BRANCH" 2>/dev/null || true
           git checkout -b "$BRANCH"
           git push -u origin "$BRANCH"
 
