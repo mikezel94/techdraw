@@ -376,6 +376,10 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
     }
     case 'rect': {
       const color = el.color ?? STROKE;
+      if (el.fill) {
+        ctx.fillStyle = el.fill;
+        ctx.fillRect(el.x, el.y, el.width, el.height);
+      }
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.strokeRect(el.x, el.y, el.width, el.height);
@@ -384,10 +388,13 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
     }
     case 'ellipse': {
       const color = el.color ?? STROKE;
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
       ctx.beginPath();
       ctx.ellipse(el.x + el.width / 2, el.y + el.height / 2, el.width / 2, el.height / 2, 0, 0, Math.PI * 2);
+      if (el.fill) {
+        ctx.fillStyle = el.fill;
+        ctx.fill();
+      }
+      ctx.strokeStyle = color;
       ctx.stroke();
       drawShapeText(ctx, el, color);
       break;

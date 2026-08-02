@@ -70,6 +70,34 @@ test('drawn box is auto-selected with a color palette and recolors its stroke', 
   await expect(page.getByTestId('color-palette')).toHaveCount(0);
 });
 
+test('fill swatches paint the shape background', async ({ page }) => {
+  await page.goto('/');
+
+  // Draw a box at (140,140)-(320,260); center is (230,200).
+  await page.getByRole('button', { name: 'Rect' }).click();
+  await page.mouse.move(140, 140);
+  await page.mouse.down();
+  await page.mouse.move(320, 260, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.getByTestId('color-palette')).toBeVisible();
+
+  // Interior starts unfilled (no red inside the box).
+  expect((await colorsNear(page, 230, 200, 3)).some(isRed)).toBe(false);
+
+  // Picking a red fill paints the interior, and the swatch shows active.
+  await page.locator('[data-fill="#dc2626"]').click();
+  expect((await colorsNear(page, 230, 200, 3)).some(isRed)).toBe(true);
+  await expect(page.locator('[data-fill="#dc2626"]')).toHaveClass(/active/);
+
+  // The stroke stays ink unless recolored: the top edge is still dark.
+  expect((await colorsNear(page, 230, 140, 3)).some(isDark)).toBe(true);
+
+  // "No fill" clears the background again.
+  await page.locator('[data-fill="none"]').click();
+  expect((await colorsNear(page, 230, 200, 3)).some(isRed)).toBe(false);
+  await expect(page.locator('[data-fill="none"]')).toHaveClass(/active/);
+});
+
 test('each created box suggests extending into a connected next box', async ({ page }) => {
   await page.goto('/');
 
