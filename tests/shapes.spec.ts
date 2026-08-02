@@ -35,8 +35,9 @@ test('arrow tool draws a free (unbound) arrow with a filled head', async ({ page
   await drawShape(page, 'Arrow', 100, 420, 320, 420);
   await expect(elementCount(page)).toHaveText('1');
 
-  // Shaft ink...
-  expect((await colorsNear(page, 200, 420, 2)).some(isDark)).toBe(true);
+  // Shaft ink — probed off the curve midpoint, which the white bend handle
+  // covers while the arrow is selected...
+  expect((await colorsNear(page, 155, 432, 2)).some(isDark)).toBe(true);
   // ...and a filled arrowhead near the end point.
   expect((await colorsNear(page, 312, 420, 4)).some(isDark)).toBe(true);
 });

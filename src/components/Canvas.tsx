@@ -26,6 +26,8 @@ const ARROW_HEAD_MIN = 14;
 const ARROW_HEAD_MAX = 30;
 const ARROW_HEAD_RATIO = 0.15;
 const ARROW_HEAD_SPREAD = Math.PI / 6;
+const ARROW_BOW_RATIO = 0.1;
+const ARROW_BOW_MAX = 25;
 
 export interface ExtendPreview {
   x: number;
@@ -56,6 +58,8 @@ interface CanvasProps {
   onDragMove: (dx: number, dy: number) => void;
   onDragEnd: (moved: boolean) => void;
   onEndpointDragMove: (id: string, end: 'start' | 'end', point: Point, binding: ArrowBinding | null) => void;
+  onBendDragMove: (id: string, bend: number) => void;
+  onBendReset: (id: string) => void;
   onTextPlace: (x: number, y: number) => void;
   onEditLabel: (shapeId: string, x: number, y: number) => void;
   onCameraChange: (camera: Camera) => void;
@@ -161,13 +165,41 @@ interface ArrowControls {
   c2: Point;
 }
 
-function arrowControls(elements: Element[], el: ArrowElement): ArrowControls | null {
-  const n0 = boundNormal(elements, el, 'start');
-  const n1 = boundNormal(elements, el, 'end');
-  if (!n0 && !n1) return null;
+function arrowControls(elements: Element[], el: ArrowElement): ArrowControls {
   const dx = el.x2 - el.x1;
   const dy = el.y2 - el.y1;
   const len = Math.hypot(dx, dy) || 1;
+
+  // An explicit bend (dragged midpoint handle) takes priority: the curve is
+  // a quadratic elevated to a cubic. A quadratic only reaches halfway toward
+  // its control point, so the control point sits at twice the apex offset —
+  // the shaft then passes exactly through mid + perp * bend at t = 0.5,
+  // right under the drag handle.
+  if (el.bend !== undefined) {
+    const perpX = -dy / len;
+    const perpY = dx / len;
+    const qx = el.x1 + dx / 2 + perpX * el.bend * 2;
+    const qy = el.y1 + dy / 2 + perpY * el.bend * 2;
+    return {
+      c1: { x: el.x1 + (2 / 3) * (qx - el.x1), y: el.y1 + (2 / 3) * (qy - el.y1) },
+      c2: { x: el.x2 + (2 / 3) * (qx - el.x2), y: el.y2 + (2 / 3) * (qy - el.y2) },
+    };
+  }
+
+  const n0 = boundNormal(elements, el, 'start');
+  const n1 = boundNormal(elements, el, 'end');
+
+  if (!n0 && !n1) {
+    // Free arrow: gentle perpendicular bow for a flexible look
+    const bow = Math.min(len * ARROW_BOW_RATIO, ARROW_BOW_MAX);
+    const perpX = -dy / len;
+    const perpY = dx / len;
+    return {
+      c1: { x: el.x1 + dx / 3 + perpX * bow, y: el.y1 + dy / 3 + perpY * bow },
+      c2: { x: el.x1 + (2 * dx) / 3 + perpX * bow, y: el.y1 + (2 * dy) / 3 + perpY * bow },
+    };
+  }
+
   const bend = Math.min(len * 0.35, 60);
   const d0 = n0 ?? { x: dx / len, y: dy / len };
   const d1 = n1 ?? { x: -dx / len, y: -dy / len };
@@ -175,6 +207,11 @@ function arrowControls(elements: Element[], el: ArrowElement): ArrowControls | n
     c1: { x: el.x1 + d0.x * bend, y: el.y1 + d0.y * bend },
     c2: { x: el.x2 + d1.x * bend, y: el.y2 + d1.y * bend },
   };
+}
+
+function arrowMidpoint(elements: Element[], el: ArrowElement): Point {
+  const c = arrowControls(elements, el);
+  return cubicPoint({ x: el.x1, y: el.y1 }, c.c1, c.c2, { x: el.x2, y: el.y2 }, 0.5);
 }
 
 function cubicPoint(p0: Point, c1: Point, c2: Point, p1: Point, t: number): Point {
@@ -208,9 +245,6 @@ function hitElement(el: Element, x: number, y: number, elements: Element[]): boo
       return distToSegment(x, y, el.x1, el.y1, el.x2, el.y2) <= HIT_TOLERANCE;
     case 'arrow': {
       const controls = arrowControls(elements, el);
-      if (!controls) {
-        return distToSegment(x, y, el.x1, el.y1, el.x2, el.y2) <= HIT_TOLERANCE;
-      }
       const p0 = { x: el.x1, y: el.y1 };
       const p1 = { x: el.x2, y: el.y2 };
       let prev = p0;
@@ -263,14 +297,6 @@ function bboxOf(el: Element, elements: Element[]): { x: number; y: number; w: nu
       };
     case 'arrow': {
       const controls = arrowControls(elements, el);
-      if (!controls) {
-        return {
-          x: Math.min(el.x1, el.x2),
-          y: Math.min(el.y1, el.y2),
-          w: Math.abs(el.x2 - el.x1),
-          h: Math.abs(el.y2 - el.y1),
-        };
-      }
       const p0 = { x: el.x1, y: el.y1 };
       const p1 = { x: el.x2, y: el.y2 };
       let minX = Infinity;
@@ -376,15 +402,9 @@ function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Eleme
       const controls = arrowControls(elements, el);
       ctx.beginPath();
       ctx.moveTo(el.x1, el.y1);
-      if (controls) {
-        ctx.bezierCurveTo(controls.c1.x, controls.c1.y, controls.c2.x, controls.c2.y, el.x2, el.y2);
-      } else {
-        ctx.lineTo(el.x2, el.y2);
-      }
+      ctx.bezierCurveTo(controls.c1.x, controls.c1.y, controls.c2.x, controls.c2.y, el.x2, el.y2);
       ctx.stroke();
-      const angle = controls
-        ? Math.atan2(el.y2 - controls.c2.y, el.x2 - controls.c2.x)
-        : Math.atan2(el.y2 - el.y1, el.x2 - el.x1);
+      const angle = Math.atan2(el.y2 - controls.c2.y, el.x2 - controls.c2.x);
       const arrowLen = Math.hypot(el.x2 - el.x1, el.y2 - el.y1);
       const headLength = clamp(arrowLen * ARROW_HEAD_RATIO, ARROW_HEAD_MIN, ARROW_HEAD_MAX);
       const spread = ARROW_HEAD_SPREAD;
@@ -469,7 +489,7 @@ function drawSelection(ctx: CanvasRenderingContext2D, el: Element, elements: Ele
   ctx.restore();
 }
 
-function drawArrowHandles(ctx: CanvasRenderingContext2D, el: ArrowElement): void {
+function drawArrowHandles(ctx: CanvasRenderingContext2D, el: ArrowElement, elements: Element[]): void {
   ctx.save();
   ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = SELECT_COLOR;
@@ -483,6 +503,12 @@ function drawArrowHandles(ctx: CanvasRenderingContext2D, el: ArrowElement): void
     ctx.fill();
     ctx.stroke();
   }
+  // Circular midpoint handle: drag it to flex the arrow.
+  const mid = arrowMidpoint(elements, el);
+  ctx.beginPath();
+  ctx.arc(mid.x, mid.y, HANDLE_SIZE / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -609,6 +635,8 @@ export default function Canvas({
   onDragMove,
   onDragEnd,
   onEndpointDragMove,
+  onBendDragMove,
+  onBendReset,
   onTextPlace,
   onEditLabel,
   onCameraChange,
@@ -618,6 +646,7 @@ export default function Canvas({
   const startRef = useRef<Point>({ x: 0, y: 0 });
   const moveRef = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
   const endpointRef = useRef<{ id: string; end: 'start' | 'end'; moved: boolean } | null>(null);
+  const bendRef = useRef<{ id: string; moved: boolean } | null>(null);
   const panRef = useRef<{ startX: number; startY: number; camX: number; camY: number } | null>(null);
   const marqueeRef = useRef<{ startWorld: Point; currentWorld: Point } | null>(null);
   const pendingDimRef = useRef<Point | null>(null);
@@ -684,7 +713,7 @@ export default function Canvas({
           if (sel) {
             drawSelection(ctx, sel, elements);
             if (sel.type === 'arrow') {
-              drawArrowHandles(ctx, sel);
+              drawArrowHandles(ctx, sel, elements);
             }
           }
         }
@@ -778,7 +807,7 @@ export default function Canvas({
     }
 
     if (tool === 'select') {
-      // Arrow endpoint handles
+      // Arrow endpoint and bend handles
       for (const id of selectedIds) {
         const sel = elements.find((el) => el.id === id);
         if (sel && sel.type === 'arrow') {
@@ -790,6 +819,13 @@ export default function Canvas({
             endpointRef.current = { id: sel.id, end: nearStart ? 'start' : 'end', moved: false };
             return;
           }
+          const mid = arrowMidpoint(elements, sel);
+          if (Math.hypot(p.x - mid.x, p.y - mid.y) <= HANDLE_HIT / camera.zoom) {
+            canvasRef.current?.setPointerCapture(e.pointerId);
+            onDragStart([sel.id]);
+            bendRef.current = { id: sel.id, moved: false };
+            return;
+          }
         }
       }
 
@@ -799,6 +835,11 @@ export default function Canvas({
       if (isDoubleClick && hit) {
         if (hit.type === 'rect' || hit.type === 'ellipse' || hit.type === 'text') {
           onEditLabel(hit.id, hit.x + hit.width / 2, hit.y + hit.height / 2);
+          return;
+        }
+        // Double-click an arrow to release its bend back to the default curve.
+        if (hit.type === 'arrow' && hit.bend !== undefined) {
+          onBendReset(hit.id);
           return;
         }
       }
@@ -948,6 +989,23 @@ export default function Canvas({
       return;
     }
 
+    // Dragging arrow bend handle: bend is the pointer's perpendicular offset
+    // from the straight chord.
+    if (bendRef.current) {
+      const { id } = bendRef.current;
+      const el = elements.find((e) => e.id === id);
+      if (el && el.type === 'arrow') {
+        const dx = el.x2 - el.x1;
+        const dy = el.y2 - el.y1;
+        const len = Math.hypot(dx, dy) || 1;
+        const midX = (el.x1 + el.x2) / 2;
+        const midY = (el.y1 + el.y2) / 2;
+        bendRef.current.moved = true;
+        onBendDragMove(id, ((p.x - midX) * -dy + (p.y - midY) * dx) / len);
+      }
+      return;
+    }
+
     // Marquee selection
     if (marqueeRef.current) {
       marqueeRef.current.currentWorld = p;
@@ -978,15 +1036,17 @@ export default function Canvas({
     }
 
     if (!current) {
-      // Handle hover cursor for arrow endpoints
+      // Handle hover cursor for arrow endpoints and bend handles
       if (tool === 'select' && selectedIds.size > 0) {
         let over = false;
         for (const id of selectedIds) {
           const sel = elements.find((el) => el.id === id);
           if (sel && sel.type === 'arrow') {
+            const mid = arrowMidpoint(elements, sel);
             if (
               Math.hypot(p.x - sel.x1, p.y - sel.y1) <= HANDLE_HIT / camera.zoom ||
-              Math.hypot(p.x - sel.x2, p.y - sel.y2) <= HANDLE_HIT / camera.zoom
+              Math.hypot(p.x - sel.x2, p.y - sel.y2) <= HANDLE_HIT / camera.zoom ||
+              Math.hypot(p.x - mid.x, p.y - mid.y) <= HANDLE_HIT / camera.zoom
             ) {
               over = true;
               break;
@@ -1028,6 +1088,12 @@ export default function Canvas({
     if (endpointRef.current) {
       onDragEnd(endpointRef.current.moved);
       endpointRef.current = null;
+      return;
+    }
+
+    if (bendRef.current) {
+      onDragEnd(bendRef.current.moved);
+      bendRef.current = null;
       return;
     }
 
@@ -1083,6 +1149,10 @@ export default function Canvas({
     if (endpointRef.current) {
       onDragEnd(false);
       endpointRef.current = null;
+    }
+    if (bendRef.current) {
+      onDragEnd(false);
+      bendRef.current = null;
     }
     if (moveRef.current) {
       onDragEnd(false);

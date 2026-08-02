@@ -67,3 +67,4 @@ What follows from this decision — benefits, costs, and new constraints.
 |---|---|---|---|
 | [0001](./0001-record-architecture-decisions.md) | Record architecture decisions | Accepted | 2026-08-02 |
 | [0002](./0002-e2e-testing-with-canvas-pixel-probes.md) | E2E testing with canvas pixel probes | Accepted | 2026-08-02 |
+| [0003](./0003-arrow-bend-scalar.md) | User-adjustable arrow bend as a scalar offset | Accepted | 2026-08-02 |

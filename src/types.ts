@@ -56,6 +56,9 @@ export interface ArrowElement extends BaseElement {
   y2: number;
   startBinding?: ArrowBinding;
   endBinding?: ArrowBinding;
+  /** Perpendicular offset of the curve apex from the straight chord, set by
+   * dragging the midpoint handle. Undefined means "default curvature". */
+  bend?: number;
 }
 
 export interface TextElement extends BaseElement {

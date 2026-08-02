@@ -93,3 +93,4 @@ Current decisions:
 |---|---|---|
 | [0001](./docs/adr/0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0002](./docs/adr/0002-e2e-testing-with-canvas-pixel-probes.md) | E2E testing with canvas pixel probes | Accepted |
+| [0003](./docs/adr/0003-arrow-bend-scalar.md) | User-adjustable arrow bend as a scalar offset | Accepted |

@@ -213,6 +213,26 @@ export default function App() {
     );
   };
 
+  const handleBendDragMove = (id: string, bend: number) => {
+    const base = dragBaseRef.current;
+    if (!base) return;
+    setElements(
+      base.map((e) => (e.id === id && e.type === 'arrow' ? { ...e, bend } : e)),
+    );
+  };
+
+  const handleBendReset = (id: string) => {
+    pushHistory(elements);
+    setElements(
+      elements.map((e) => {
+        if (e.id !== id || e.type !== 'arrow') return e;
+        const cleared = { ...e };
+        delete cleared.bend;
+        return cleared;
+      }),
+    );
+  };
+
   const handleDragEnd = (moved: boolean) => {
     if (moved && dragBaseRef.current) {
       pushHistory(dragBaseRef.current);
@@ -560,6 +580,8 @@ export default function App() {
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
         onEndpointDragMove={handleEndpointDragMove}
+        onBendDragMove={handleBendDragMove}
+        onBendReset={handleBendReset}
         onTextPlace={handleTextPlace}
         onEditLabel={handleEditLabel}
         onCameraChange={handleCameraChange}
