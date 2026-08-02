@@ -338,3 +338,87 @@ canvas {
   transform: translate(-50%, -50%);
   text-align: center;
 }
+
+/* ---- Persistence UI (save indicator, restore toast, storage warning) ---- */
+
+.save-indicator {
+  position: fixed;
+  bottom: 64px;
+  right: 16px;
+  font-size: 12px;
+  color: #16a34a;
+  background: #ffffff;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 4px 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.save-indicator.visible {
+  opacity: 1;
+}
+
+.restore-toast {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e1e1e;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 20;
+  animation: palette-fade 0.15s ease-out;
+}
+
+.restore-toast button {
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.restore-toast button:hover {
+  opacity: 1;
+}
+
+.storage-warning {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  z-index: 25;
+}
+
+.storage-warning button {
+  border: none;
+  background: transparent;
+  color: #92400e;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
