@@ -52,7 +52,12 @@ All significant decisions made during development — by humans or AI — are re
 
 ```
 public/
-└── example-drawing.json  # Bundled example drawing (.tdraw format)
+├── example-drawing.json  # Bundled example drawing (.tdraw format)
+├── favicon.svg           # Browser tab icon
+├── apple-touch-icon.png  # iOS home-screen icon (generated)
+├── og-image.png          # 1200x630 social preview image (generated)
+├── robots.txt            # Crawler policy
+└── sitemap.xml           # Sitemap
 
 src/
 ├── main.tsx              # React entry point
