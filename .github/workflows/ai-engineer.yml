@@ -3,6 +3,8 @@ name: AI Engineer
 on:
   issues:
     types: [labeled]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -15,7 +17,9 @@ concurrency:
 
 jobs:
   qwen-agent:
-    if: github.event.label.name == 'AI' && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
+    if: |
+      (github.event_name == 'issues' && github.event.label.name == 'AI' && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/ai') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -27,15 +31,26 @@ jobs:
           node-version: 22
           cache: npm
 
-      # ── 1. Create branch (delete existing first) ──────────
-      - name: Create branch
+      # ── 1. Prepare branch ─────────────────────────────────
+      #    issue label   → fresh ai/issue-N branch (delete existing first)
+      #    /ai PR comment → continue on the existing PR branch
+      - name: Prepare branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="ai/issue-${{ github.event.issue.number }}"
-          git push origin --delete "$BRANCH" 2>/dev/null || true
-          git checkout -b "$BRANCH"
-          git push -u origin "$BRANCH"
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            if ! git fetch origin "$BRANCH":"$BRANCH" 2>/dev/null; then
+              echo "::error::Branch '$BRANCH' not found — the /ai command only works on PRs created by this workflow."
+              exit 1
+            fi
+            git checkout "$BRANCH"
+            git branch --set-upstream-to="origin/$BRANCH"
+          else
+            git push origin --delete "$BRANCH" 2>/dev/null || true
+            git checkout -b "$BRANCH"
+            git push -u origin "$BRANCH"
+          fi
 
       # ── 2. Install Qwen Code CLI ──────────────────────────
       - name: Install Qwen Code
@@ -127,24 +142,17 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      # ── 7. Let Qwen solve the issue ───────────────────────
+      # ── 7. Let Qwen solve the issue / address feedback ────
       - name: Solve issue
         env:
           BAILIAN_TOKEN_PLAN_API_KEY: ${{ secrets.BAILIAN_TOKEN_PLAN_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          qwen -p --output-format stream-json --approval-mode yolo \
-            --append-system-prompt "Caveman mode full active. Use /caveman skill for all responses. A codebase knowledge graph exists at graphify-out/graph.json — use /graphify query to understand architecture before reading files. This saves tokens." \
-            "You are solving GitHub issue #${ISSUE_NUMBER}.
-
-          Title: ${ISSUE_TITLE}
-
-          Description:
-          ${ISSUE_BODY}
-
-          Instructions:
+          INSTRUCTIONS="Instructions:
           - Follow all conventions in AGENTS.md
           - Make the necessary code changes
           - node_modules and Playwright Chromium are ALREADY installed — do NOT run npm install, npm ci, or npx playwright install
@@ -152,9 +160,33 @@ jobs:
           - If tests exist, run 'npm test' and make sure they pass. Run the suite at most 3 times; after a failure re-run only the failing spec (e.g. 'npx playwright test tests/<file>.spec.ts') instead of the whole suite
           - Do NOT commit — just leave the changes in the working tree"
 
+          if [ "$EVENT_NAME" = "issue_comment" ]; then
+            FEEDBACK="${COMMENT_BODY#/ai}"
+            TASK="You are addressing review feedback on the pull request for GitHub issue #${ISSUE_NUMBER} (${ISSUE_TITLE}). The current implementation is already on this branch — build on it, do not start over.
+
+          Review feedback:
+          ${FEEDBACK}
+
+          ${INSTRUCTIONS}"
+          else
+            TASK="You are solving GitHub issue #${ISSUE_NUMBER}.
+
+          Title: ${ISSUE_TITLE}
+
+          Description:
+          ${ISSUE_BODY}
+
+          ${INSTRUCTIONS}"
+          fi
+
+          qwen -p --output-format stream-json --approval-mode yolo \
+            --append-system-prompt "Caveman mode full active. Use /caveman skill for all responses. A codebase knowledge graph exists at graphify-out/graph.json — use /graphify query to understand architecture before reading files. This saves tokens." \
+            "$TASK"
+
       # ── 8. Commit & push ─────────────────────────────────
       - name: Commit and push
         env:
+          EVENT_NAME: ${{ github.event_name }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
@@ -166,11 +198,17 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "fix: resolve #${ISSUE_NUMBER} — ${ISSUE_TITLE}"
+          if [ "$EVENT_NAME" = "issue_comment" ]; then
+            COMMIT_MSG="fix: address review feedback on #${ISSUE_NUMBER}"
+          else
+            COMMIT_MSG="fix: resolve #${ISSUE_NUMBER} — ${ISSUE_TITLE}"
+          fi
+          git commit -m "$COMMIT_MSG"
           git push
 
-      # ── 9. Create PR ─────────────────────────────────────
+      # ── 9. Create PR (issue runs only; /ai runs push to the existing PR) ──
       - name: Create pull request
+        if: github.event_name == 'issues'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
