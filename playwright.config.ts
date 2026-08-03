@@ -5,7 +5,21 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Simulate a returning user: the onboarding tour is marked as seen so
+        // the overlay stays out of every spec. First-visit behavior is covered
+        // in onboarding.spec.ts, which overrides this with a fresh state.
+        storageState: {
+          cookies: [],
+          origins: [
+            {
+              origin: 'http://localhost:5173',
+              localStorage: [{ name: 'techdraw-onboarded', value: 'seen' }],
+            },
+          ],
+        },
+      },
     },
   ],
   webServer: {
