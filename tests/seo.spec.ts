@@ -17,6 +17,24 @@ test('page title and core meta tags are descriptive', async ({ page }) => {
   );
 });
 
+test('meta description fits the search-result snippet budget', async ({ page }) => {
+  await page.goto('/');
+
+  const content = await page.locator('meta[name="description"]').getAttribute('content');
+  expect(content).not.toBeNull();
+  // ~1000px of snippet width at typical rendering ≈ 160 characters.
+  expect(content!.length).toBeLessThanOrEqual(160);
+});
+
+test('rendered app exposes a single visible h1 wordmark', async ({ page }) => {
+  await page.goto('/');
+
+  const h1 = page.locator('h1');
+  await expect(h1).toHaveCount(1);
+  await expect(h1).toHaveText('TechDraw');
+  await expect(h1).toBeVisible();
+});
+
 test('Open Graph and Twitter card tags are present', async ({ page }) => {
   await page.goto('/');
 
@@ -90,4 +108,16 @@ test('served HTML carries a noscript fallback for crawlers and no-JS users', asy
   expect(html).toContain('<noscript>');
   expect(html).toContain('TechDraw — Free Browser-Based Technical Drawing Tool');
   expect(html).toContain('Please enable JavaScript to use TechDraw.');
+  // Structured copy — headings, paragraphs and an external link — so no-JS
+  // crawlers still index real content.
+  expect(html).toContain('<h2>Features</h2>');
+  expect(html).toContain('<a href="https://github.com/mikezel94/techdraw">');
+});
+
+test('_redirects routes www traffic to the apex domain', async ({ page }) => {
+  const response = await page.request.get('/_redirects');
+  expect(response.ok()).toBe(true);
+  const body = await response.text();
+  expect(body).toContain('https://www.techdraw.pages.dev/*');
+  expect(body).toContain('https://techdraw.pages.dev/:splat 301');
 });

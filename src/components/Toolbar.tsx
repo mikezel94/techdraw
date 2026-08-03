@@ -173,6 +173,10 @@ export default function Toolbar({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="toolbar">
+      <h1 className="toolbar-title" data-testid="app-title">
+        TechDraw
+      </h1>
+      <div className="divider" />
       {TOOLS.map((t) => (
         <button
           key={t.id}
