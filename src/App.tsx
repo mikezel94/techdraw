@@ -6,6 +6,7 @@ import ZoomControls from './components/ZoomControls';
 import GridControls from './components/GridControls';
 import OnboardingOverlay from './components/OnboardingOverlay';
 import HelpModal from './components/HelpModal';
+import MobileNotice from './components/MobileNotice';
 import type {
   ArrowBinding,
   ArrowElement,
@@ -22,8 +23,10 @@ import { DEFAULT_CAMERA, clampZoom } from './lib/camera';
 import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './lib/labelFont';
 import {
   clearProject,
+  hasDismissedMobileNotice,
   hasSeenOnboarding,
   loadProject,
+  markMobileNoticeDismissed,
   markOnboardingSeen,
   saveProject,
 } from './lib/storage';
@@ -39,13 +42,13 @@ const INK_COLOR = '#1e1e1e';
 const WHITE_COLOR = '#ffffff';
 const SHAPE_COLORS = ['#dc2626', '#d97706', '#16a34a', '#0d9488', '#2563eb', '#7c3aed', '#db2777'];
 const EXTEND_GAP = 100;
-const CHIP_SIZE = 26;
 const AUTOSAVE_DEBOUNCE_MS = 800;
 const SAVE_FLASH_MS = 2000;
 const DELETE_CONFIRM_THRESHOLD = 10;
 const PASTE_OFFSET = 20;
 // "A" glyph sizes used on the S/M/L palette buttons.
 const FONT_SCALE_BUTTON_SIZES: Record<FontScale, number> = { small: 10, medium: 13, large: 16 };
+const MOBILE_NOTICE_MAX_WIDTH = 768;
 
 function translateElement(el: Element, dx: number, dy: number): Element {
   switch (el.type) {
@@ -158,6 +161,9 @@ export default function App() {
   const [fileError, setFileError] = useState<string | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(() => !hasSeenOnboarding());
   const [helpOpen, setHelpOpen] = useState(false);
+  const [mobileNoticeOpen, setMobileNoticeOpen] = useState(
+    () => window.innerWidth < MOBILE_NOTICE_MAX_WIDTH && !hasDismissedMobileNotice(),
+  );
   const closeHelp = useCallback(() => setHelpOpen(false), []);
 
   const dragBaseRef = useRef<Element[] | null>(null);
@@ -337,6 +343,11 @@ export default function App() {
     markOnboardingSeen();
     setOnboardingOpen(false);
     if (loadExampleOnFinish) void loadExample();
+  };
+
+  const dismissMobileNotice = () => {
+    markMobileNoticeDismissed();
+    setMobileNoticeOpen(false);
   };
 
   // Drag-and-drop a `.tdraw` file anywhere on the canvas to open it.
@@ -921,8 +932,8 @@ export default function App() {
   const chipScreen =
     chipVisible && extendRect
       ? {
-          left: (extendRect.x + extendRect.width) * camera.zoom + camera.x + 20 - CHIP_SIZE / 2,
-          top: (extendRect.y + extendRect.height / 2) * camera.zoom + camera.y - CHIP_SIZE / 2,
+          left: (extendRect.x + extendRect.width) * camera.zoom + camera.x + 20,
+          top: (extendRect.y + extendRect.height / 2) * camera.zoom + camera.y,
         }
       : null;
   const extendPreview =
@@ -1197,6 +1208,7 @@ export default function App() {
       )}
       {helpOpen && <HelpModal onClose={closeHelp} />}
       {onboardingOpen && <OnboardingOverlay onFinish={finishOnboarding} />}
+      {mobileNoticeOpen && <MobileNotice onDismiss={dismissMobileNotice} />}
     </>
   );
 }

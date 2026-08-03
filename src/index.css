@@ -14,6 +14,13 @@ body {
   background: #ffffff;
   color: #1e1e1e;
   overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Kill the double-tap-to-zoom delay on touch devices without disabling
+   pinch zoom on the page itself. */
+button {
+  touch-action: manipulation;
 }
 
 canvas {
@@ -360,10 +367,12 @@ canvas {
   box-shadow: 0 2px 8px rgba(74, 144, 217, 0.5);
   animation: chip-pop 0.16s ease-out;
   transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  /* left/top are the chip's center, so its size stays out of the positioning math */
+  transform: translate(-50%, -50%);
 }
 
 .extend-chip:hover {
-  transform: scale(1.18);
+  transform: translate(-50%, -50%) scale(1.18);
   background: #3b7cc4;
   box-shadow: 0 3px 12px rgba(74, 144, 217, 0.65);
 }
@@ -379,11 +388,11 @@ canvas {
 
 @keyframes chip-pop {
   from {
-    transform: scale(0.4);
+    transform: translate(-50%, -50%) scale(0.4);
     opacity: 0;
   }
   to {
-    transform: scale(1);
+    transform: translate(-50%, -50%) scale(1);
     opacity: 1;
   }
 }
@@ -726,4 +735,187 @@ canvas {
 
 .help-links a {
   color: #2563eb;
+}
+
+/* ---- Small-screen notice (first load on phones) ---- */
+
+.mobile-notice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+    calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+}
+
+.mobile-notice {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  padding: 20px 24px;
+  max-width: 360px;
+  text-align: center;
+  animation: palette-fade 0.15s ease-out;
+}
+
+.mobile-notice h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.mobile-notice p {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #444444;
+}
+
+.mobile-notice button {
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.mobile-notice button:hover {
+  background: #1d4ed8;
+}
+
+/* ---- Small-screen layout: toolbar becomes a bottom sheet, floating
+   controls move to the top corners ---- */
+
+@media (max-width: 767px) {
+  .toolbar {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px;
+    border-right: none;
+    border-left: none;
+    border-bottom: none;
+    border-radius: 12px 12px 0 0;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+
+  .toolbar .status,
+  .toolbar .divider {
+    display: none;
+  }
+
+  .toolbar .toolbar-title {
+    width: 100%;
+    text-align: center;
+    margin: 0;
+  }
+
+  /* The export menu opens upward from the bottom-sheet toolbar. */
+  .export-menu-items {
+    top: auto;
+    bottom: calc(100% + 6px);
+  }
+
+  .zoom-controls {
+    top: calc(8px + env(safe-area-inset-top));
+    bottom: auto;
+    left: 8px;
+  }
+
+  .grid-controls {
+    top: calc(8px + env(safe-area-inset-top));
+    bottom: auto;
+    right: 8px;
+  }
+
+  .save-indicator {
+    top: calc(64px + env(safe-area-inset-top));
+    bottom: auto;
+  }
+}
+
+/* ---- Touch-sized targets (44x44px minimum, per Apple HIG) ---- */
+
+@media (max-width: 767px), (pointer: coarse) {
+  .toolbar button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .export-menu-items button {
+    min-height: 44px;
+  }
+
+  .zoom-controls button {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .grid-controls button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 5px 12px;
+  }
+
+  .grid-controls .help-button {
+    width: 44px;
+  }
+
+  .color-palette {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: calc(100vw - 16px);
+    border-radius: 16px;
+  }
+
+  .color-swatch {
+    width: 44px;
+    height: 44px;
+  }
+
+  .font-scale {
+    width: 44px;
+    height: 44px;
+  }
+
+  .palette-delete {
+    width: 44px;
+    height: 44px;
+  }
+
+  .extend-chip {
+    width: 44px;
+    height: 44px;
+  }
+
+  .modal-header button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .onboarding-footer button {
+    min-height: 44px;
+  }
+
+  .restore-toast button,
+  .storage-warning button,
+  .file-error button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mobile-notice button {
+    min-height: 44px;
+  }
 }

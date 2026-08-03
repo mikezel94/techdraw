@@ -10,7 +10,7 @@ import type {
 } from '../types';
 import { genId } from '../types';
 import type { Camera } from '../lib/camera';
-import { screenToWorld, snapPointToGrid, getGridStep } from '../lib/camera';
+import { screenToWorld, snapPointToGrid, getGridStep, clampZoom } from '../lib/camera';
 import { drawDimension, hitDimension, bboxOfDimension, DIM_OFFSET } from '../lib/dimensions';
 import { fitLabelFontSize, LABEL_FONT_FAMILY, LABEL_PAD } from '../lib/labelFont';
 
@@ -665,6 +665,15 @@ export default function Canvas({
   } | null>(null);
   const pendingDimRef = useRef<Point | null>(null);
   const lastClickRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
+  // Multi-touch: every active pointer (screen coords), plus the two-finger
+  // pinch/pan gesture state captured when the second finger lands.
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const gestureRef = useRef<{
+    startDist: number;
+    startMidX: number;
+    startMidY: number;
+    startCam: Camera;
+  } | null>(null);
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
 
@@ -781,7 +790,54 @@ export default function Canvas({
     return () => canvas.removeEventListener('wheel', onWheel);
   }, [onCameraChange]);
 
+  // Safety net for the pointer map: the text tool deliberately skips pointer
+  // capture, so a finger/mouse released outside the canvas never fires the
+  // canvas pointerup. A window-level capture listener sees every release and
+  // keeps the map from accumulating stale entries (which a later pointerdown
+  // would misread as a second finger).
+  useEffect(() => {
+    const prune = (e: PointerEvent) => {
+      pointersRef.current.delete(e.pointerId);
+    };
+    window.addEventListener('pointerup', prune, true);
+    window.addEventListener('pointercancel', prune, true);
+    return () => {
+      window.removeEventListener('pointerup', prune, true);
+      window.removeEventListener('pointercancel', prune, true);
+    };
+  }, []);
+
   const maybeSnap = (p: Point): Point => (snapEnabled ? snapPointToGrid(p, gridSize) : p);
+
+  // Abandon whatever the first finger started when a second finger turns the
+  // interaction into a two-finger gesture. Element drags snap back to their
+  // start position; open drafts and marquees are dropped. Endpoint/bend drags
+  // commit as-is (they are undoable).
+  const cancelSinglePointerWork = () => {
+    setSnapHint(null);
+    panRef.current = null;
+    if (moveRef.current) {
+      onDragMove(0, 0);
+      onDragEnd(false);
+      moveRef.current = null;
+    }
+    if (endpointRef.current) {
+      onDragEnd(endpointRef.current.moved);
+      endpointRef.current = null;
+    }
+    if (bendRef.current) {
+      onDragEnd(bendRef.current.moved);
+      bendRef.current = null;
+    }
+    if (marqueeRef.current) {
+      marqueeRef.current = null;
+      setMarqueeBox(null);
+    }
+    if (draftRef.current) {
+      draftRef.current = null;
+      onDraftChange(null);
+    }
+  };
 
   // ---- Pointer handlers ----
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -789,6 +845,22 @@ export default function Canvas({
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
     const p = screenToWorld(camera, screenX, screenY);
+
+    pointersRef.current.set(e.pointerId, { x: screenX, y: screenY });
+
+    // Second finger: pinch-to-zoom + two-finger pan gesture.
+    if (pointersRef.current.size === 2) {
+      cancelSinglePointerWork();
+      const [a, b] = [...pointersRef.current.values()];
+      gestureRef.current = {
+        startDist: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+        startMidX: (a.x + b.x) / 2,
+        startMidY: (a.y + b.y) / 2,
+        startCam: cameraRef.current,
+      };
+      return;
+    }
+    if (pointersRef.current.size > 2) return;
 
     // Pan: middle mouse or space + left click
     if (e.button === 1 || (spaceHeld && e.button === 0)) {
@@ -977,6 +1049,28 @@ export default function Canvas({
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
 
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: screenX, y: screenY });
+    }
+
+    // Two-finger pinch/pan: the distance change zooms around the midpoint,
+    // and the midpoint movement pans.
+    if (gestureRef.current && pointersRef.current.size >= 2) {
+      const [a, b] = [...pointersRef.current.values()];
+      const g = gestureRef.current;
+      const dist = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      const zoom = clampZoom(g.startCam.zoom * (dist / g.startDist));
+      const world = screenToWorld(g.startCam, g.startMidX, g.startMidY);
+      onCameraChange({
+        x: midX - world.x * zoom,
+        y: midY - world.y * zoom,
+        zoom,
+      });
+      return;
+    }
+
     // Panning
     if (panRef.current) {
       const dx = screenX - panRef.current.startX;
@@ -1099,7 +1193,17 @@ export default function Canvas({
     onDraftChange(draftRef.current);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    pointersRef.current.delete(e.pointerId);
+    if (gestureRef.current) {
+      if (pointersRef.current.size < 2) {
+        // Gesture over. A finger still down does nothing until it lifts and
+        // touches again.
+        gestureRef.current = null;
+      }
+      return;
+    }
+
     setSnapHint(null);
 
     if (panRef.current) {
@@ -1169,7 +1273,9 @@ export default function Canvas({
     }
   };
 
-  const handlePointerCancel = () => {
+  const handlePointerCancel = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size < 2) gestureRef.current = null;
     setSnapHint(null);
     panRef.current = null;
     pendingDimRef.current = null;
