@@ -114,7 +114,20 @@ jobs:
               print('No code files found')
           "
 
-      # ── 6. Let Qwen solve the issue ───────────────────────
+      # ── 6. Pre-install deps so the agent doesn't have to ──
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # ── 7. Let Qwen solve the issue ───────────────────────
       - name: Solve issue
         env:
           BAILIAN_TOKEN_PLAN_API_KEY: ${{ secrets.BAILIAN_TOKEN_PLAN_API_KEY }}
@@ -134,11 +147,12 @@ jobs:
           Instructions:
           - Follow all conventions in AGENTS.md
           - Make the necessary code changes
+          - node_modules and Playwright Chromium are ALREADY installed — do NOT run npm install, npm ci, or npx playwright install
           - Run 'npm run build' to verify the build passes
-          - If tests exist, run 'npm test' and make sure they pass
+          - If tests exist, run 'npm test' and make sure they pass. Run the suite at most 3 times; after a failure re-run only the failing spec (e.g. 'npx playwright test tests/<file>.spec.ts') instead of the whole suite
           - Do NOT commit — just leave the changes in the working tree"
 
-      # ── 7. Commit & push ─────────────────────────────────
+      # ── 8. Commit & push ─────────────────────────────────
       - name: Commit and push
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -155,7 +169,7 @@ jobs:
           git commit -m "fix: resolve #${ISSUE_NUMBER} — ${ISSUE_TITLE}"
           git push
 
-      # ── 8. Create PR ─────────────────────────────────────
+      # ── 9. Create PR ─────────────────────────────────────
       - name: Create pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
