@@ -111,3 +111,104 @@ export async function countGridPixels(
     [x0, y0, x1, y1],
   );
 }
+
+// ---------------------------------------------------------------------------
+// Touch gestures. Playwright's built-in touchscreen API only covers single
+// taps, so multi-finger input goes through the Chrome DevTools Protocol,
+// which synthesizes real touch pointer events in the page.
+// ---------------------------------------------------------------------------
+
+// Single-finger drag: the touch equivalent of a mouse drag.
+export async function touchDrag(
+  page: Page,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  steps = 8,
+): Promise<void> {
+  const client = await page.context().newCDPSession(page);
+  try {
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: x1, y: y1 }],
+    });
+    for (let i = 1; i <= steps; i++) {
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          { x: x1 + ((x2 - x1) * i) / steps, y: y1 + ((y2 - y1) * i) / steps },
+        ],
+      });
+    }
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await client.detach();
+  }
+}
+
+// Pinch outward (endDist > startDist) or inward, centered on (cx, cy) with
+// the two fingers on a horizontal line.
+export async function touchPinch(
+  page: Page,
+  cx: number,
+  cy: number,
+  startDist: number,
+  endDist: number,
+  steps = 8,
+): Promise<void> {
+  const points = (d: number) => [
+    { x: cx - d / 2, y: cy },
+    { x: cx + d / 2, y: cy },
+  ];
+  const client = await page.context().newCDPSession(page);
+  try {
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: points(startDist),
+    });
+    for (let i = 1; i <= steps; i++) {
+      const d = startDist + ((endDist - startDist) * i) / steps;
+      await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(d) });
+    }
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await client.detach();
+  }
+}
+
+// Two-finger pan: both fingers move by (dx, dy) together.
+export async function touchPan(
+  page: Page,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  dx: number,
+  dy: number,
+  steps = 8,
+): Promise<void> {
+  const client = await page.context().newCDPSession(page);
+  try {
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [
+        { x: x1, y: y1 },
+        { x: x2, y: y2 },
+      ],
+    });
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          { x: x1 + dx * t, y: y1 + dy * t },
+          { x: x2 + dx * t, y: y2 + dy * t },
+        ],
+      });
+    }
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await client.detach();
+  }
+}
