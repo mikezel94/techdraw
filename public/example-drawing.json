@@ -1,0 +1,124 @@
+{
+  "format": "techdraw",
+  "version": 1,
+  "title": "Example drawing",
+  "createdAt": "2026-08-03T00:00:00.000Z",
+  "modifiedAt": "2026-08-03T00:00:00.000Z",
+  "appVersion": "example",
+  "elements": [
+    {
+      "id": "ex-title",
+      "type": "text",
+      "x": 60,
+      "y": 44,
+      "text": "BRACKET-01 — sample drawing",
+      "width": 300,
+      "height": 24
+    },
+    {
+      "id": "ex-base",
+      "type": "rect",
+      "x": 120,
+      "y": 160,
+      "width": 260,
+      "height": 140,
+      "text": "Base plate",
+      "color": "#2563eb"
+    },
+    {
+      "id": "ex-arm",
+      "type": "rect",
+      "x": 560,
+      "y": 120,
+      "width": 200,
+      "height": 100,
+      "text": "Arm",
+      "color": "#16a34a"
+    },
+    {
+      "id": "ex-pivot",
+      "type": "ellipse",
+      "x": 600,
+      "y": 340,
+      "width": 160,
+      "height": 110,
+      "text": "Pivot",
+      "color": "#d97706"
+    },
+    {
+      "id": "ex-arrow-base-arm",
+      "type": "arrow",
+      "x1": 380,
+      "y1": 230,
+      "x2": 560,
+      "y2": 170,
+      "startBinding": { "elementId": "ex-base" },
+      "endBinding": { "elementId": "ex-arm" }
+    },
+    {
+      "id": "ex-arrow-arm-pivot",
+      "type": "arrow",
+      "x1": 660,
+      "y1": 220,
+      "x2": 680,
+      "y2": 340,
+      "startBinding": { "elementId": "ex-arm" },
+      "endBinding": { "elementId": "ex-pivot" },
+      "bend": 28
+    },
+    {
+      "id": "ex-centerline",
+      "type": "line",
+      "x1": 560,
+      "y1": 395,
+      "x2": 820,
+      "y2": 395
+    },
+    {
+      "id": "ex-dim-width",
+      "type": "dimension",
+      "start": { "x": 120, "y": 300, "binding": { "elementId": "ex-base" } },
+      "end": { "x": 380, "y": 300, "binding": { "elementId": "ex-base" } },
+      "offset": 40
+    },
+    {
+      "id": "ex-sketch",
+      "type": "pencil",
+      "points": [
+        { "x": 880, "y": 210 },
+        { "x": 890, "y": 217 },
+        { "x": 900, "y": 220 },
+        { "x": 910, "y": 217 },
+        { "x": 920, "y": 210 },
+        { "x": 930, "y": 203 },
+        { "x": 940, "y": 200 },
+        { "x": 950, "y": 203 },
+        { "x": 960, "y": 210 },
+        { "x": 970, "y": 217 },
+        { "x": 980, "y": 220 },
+        { "x": 990, "y": 217 },
+        { "x": 1000, "y": 210 },
+        { "x": 1010, "y": 203 },
+        { "x": 1020, "y": 200 },
+        { "x": 1030, "y": 203 },
+        { "x": 1040, "y": 210 },
+        { "x": 1050, "y": 217 },
+        { "x": 1060, "y": 220 },
+        { "x": 1070, "y": 217 },
+        { "x": 1080, "y": 210 }
+      ]
+    },
+    {
+      "id": "ex-note",
+      "type": "text",
+      "x": 880,
+      "y": 150,
+      "text": "Drill 4× Ø8, deburr edges",
+      "width": 250,
+      "height": 24
+    }
+  ],
+  "camera": { "x": 40, "y": 60, "zoom": 1 },
+  "gridEnabled": true,
+  "snapEnabled": true
+}

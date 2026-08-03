@@ -14,6 +14,8 @@ A browser-based technical drawing and diagramming tool built on the HTML5 Canvas
 - **Box extend** — chain connected boxes with a single click
 - **Undo / redo** — full snapshot-based history
 - **Auto-save** — drawings persist in `localStorage` across page refreshes
+- **Onboarding tour** — a 4-step spotlight overlay on first visit, with a bundled example drawing that showcases every tool
+- **Help** — a `?` button with all keyboard shortcuts and tips
 
 ## Tech stack
 
@@ -49,21 +51,32 @@ All significant decisions made during development — by humans or AI — are re
 ## Project structure
 
 ```
+public/
+├── example-drawing.json  # Bundled example drawing (.tdraw format)
+├── favicon.svg           # Browser tab icon
+├── apple-touch-icon.png  # iOS home-screen icon (generated)
+├── og-image.png          # 1200x630 social preview image (generated)
+├── robots.txt            # Crawler policy
+└── sitemap.xml           # Sitemap
+
 src/
 ├── main.tsx              # React entry point
 ├── App.tsx               # Root component: state, history, shortcuts, UI
 ├── types.ts              # Element union type, Tool type, bindings
 ├── index.css             # Application styles
 ├── components/
-│   ├── Canvas.tsx         # Canvas element: pointer handling, drawing, hit-testing
-│   ├── Toolbar.tsx        # Tool palette + undo/redo
-│   ├── ZoomControls.tsx   # Zoom in / out / reset
-│   └── GridControls.tsx   # Grid & snap toggles
-└── lib/
-    ├── camera.ts          # Pan/zoom model, screen↔world transforms, snapping
-    ├── dimensions.ts      # Dimension-line geometry, rendering, hit-testing
-    ├── labelFont.ts       # Label font-size fitting (S/M/L)
-    ├── export.ts          # PNG and SVG export
-    ├── storage.ts         # localStorage persistence
-    └── projectFile.ts     # .tdraw project file save/open
+│   ├── Canvas.tsx          # Canvas element: pointer handling, drawing, hit-testing
+│   ├── Toolbar.tsx         # Tool palette + undo/redo
+│   ├── ZoomControls.tsx    # Zoom in / out / reset
+│   ├── GridControls.tsx    # Grid & snap toggles + help button
+│   ├── OnboardingOverlay.tsx # First-visit spotlight tour
+│   └── HelpModal.tsx       # Keyboard shortcuts + repository link
+├── lib/
+│   ├── camera.ts           # Pan/zoom model, screen↔world transforms, snapping
+│   ├── dimensions.ts       # Dimension-line geometry, rendering, hit-testing
+│   ├── labelFont.ts        # Label font-size fitting (S/M/L)
+│   ├── export.ts           # PNG and SVG export
+│   ├── storage.ts          # localStorage persistence + onboarding flag
+│   ├── projectFile.ts      # .tdraw project file save/open
+│   └── exampleDrawing.ts   # Bundled example drawing loader
 ```

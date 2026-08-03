@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import Canvas from './components/Canvas';
+import Canvas, { bboxOf } from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import ZoomControls from './components/ZoomControls';
 import GridControls from './components/GridControls';
+import OnboardingOverlay from './components/OnboardingOverlay';
+import HelpModal from './components/HelpModal';
 import type {
   ArrowBinding,
   ArrowElement,
@@ -14,13 +16,20 @@ import type {
   TextElement,
   Tool,
 } from './types';
-import { genId } from './types';
+import { genId, genGroupId } from './types';
 import type { Camera } from './lib/camera';
 import { DEFAULT_CAMERA, clampZoom } from './lib/camera';
 import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './lib/labelFont';
-import { clearProject, loadProject, saveProject } from './lib/storage';
+import {
+  clearProject,
+  hasSeenOnboarding,
+  loadProject,
+  markOnboardingSeen,
+  saveProject,
+} from './lib/storage';
 import { exportPng, exportSvg } from './lib/export';
 import { downloadProject, readProjectFile } from './lib/projectFile';
+import { loadExampleDrawing } from './lib/exampleDrawing';
 import type { ProjectFile } from './lib/projectFile';
 import type { PngExportOptions } from './components/Toolbar';
 
@@ -33,6 +42,8 @@ const EXTEND_GAP = 100;
 const CHIP_SIZE = 26;
 const AUTOSAVE_DEBOUNCE_MS = 800;
 const SAVE_FLASH_MS = 2000;
+const DELETE_CONFIRM_THRESHOLD = 10;
+const PASTE_OFFSET = 20;
 // "A" glyph sizes used on the S/M/L palette buttons.
 const FONT_SCALE_BUTTON_SIZES: Record<FontScale, number> = { small: 10, medium: 13, large: 16 };
 
@@ -54,6 +65,57 @@ function translateElement(el: Element, dx: number, dy: number): Element {
         end: { ...el.end, x: el.end.x + dx, y: el.end.y + dy },
       };
   }
+}
+
+// Deep-copies elements for paste/duplicate: fresh ids, an (dx, dy) offset, and
+// bindings/groups remapped so relationships inside the copied set survive while
+// references to elements left behind are dropped.
+function cloneElements(els: Element[], dx: number, dy: number): Element[] {
+  const idMap = new Map<string, string>();
+  for (const e of els) idMap.set(e.id, genId());
+  const groupMap = new Map<string, string>();
+  return els.map((orig) => {
+    let clone: Element = { ...translateElement(orig, dx, dy), id: idMap.get(orig.id)! };
+    if (clone.groupId) {
+      let gid = groupMap.get(clone.groupId);
+      if (!gid) {
+        gid = genGroupId();
+        groupMap.set(clone.groupId, gid);
+      }
+      clone = { ...clone, groupId: gid };
+    }
+    if (clone.type === 'arrow') {
+      const a = { ...clone };
+      if (a.startBinding) {
+        const target = idMap.get(a.startBinding.elementId);
+        if (target) a.startBinding = { elementId: target };
+        else delete a.startBinding;
+      }
+      if (a.endBinding) {
+        const target = idMap.get(a.endBinding.elementId);
+        if (target) a.endBinding = { elementId: target };
+        else delete a.endBinding;
+      }
+      clone = a;
+    }
+    if (clone.type === 'dimension') {
+      const d = { ...clone };
+      if (d.start.binding) {
+        const target = idMap.get(d.start.binding.elementId);
+        d.start = target
+          ? { ...d.start, binding: { elementId: target } }
+          : { x: d.start.x, y: d.start.y };
+      }
+      if (d.end.binding) {
+        const target = idMap.get(d.end.binding.elementId);
+        d.end = target
+          ? { ...d.end, binding: { elementId: target } }
+          : { x: d.end.x, y: d.end.y };
+      }
+      clone = d;
+    }
+    return clone;
+  });
 }
 
 const measureCtx = document.createElement('canvas').getContext('2d');
@@ -94,6 +156,9 @@ export default function App() {
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [title, setTitle] = useState('Untitled');
   const [fileError, setFileError] = useState<string | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(() => !hasSeenOnboarding());
+  const [helpOpen, setHelpOpen] = useState(false);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
 
   const dragBaseRef = useRef<Element[] | null>(null);
   const dragSelectedRef = useRef<Set<string>>(new Set());
@@ -103,10 +168,31 @@ export default function App() {
   const paletteRef = useRef<HTMLDivElement | null>(null);
   const [paletteHalfW, setPaletteHalfW] = useState(0);
   const skipFirstSaveRef = useRef(true);
+  const clipboardRef = useRef<Element[] | null>(null);
 
   const pushHistory = (snapshot: Element[]) => {
     setPast((p) => [...p, snapshot]);
     setFuture([]);
+  };
+
+  // Selecting or dragging any member of a group pulls in the whole group, so
+  // grouped elements always move and select as one unit.
+  const expandGroups = (ids: Set<string>): Set<string> => {
+    if (ids.size === 0) return ids;
+    const groupIds = new Set<string>();
+    for (const e of elements) {
+      if (ids.has(e.id) && e.groupId) groupIds.add(e.groupId);
+    }
+    if (groupIds.size === 0) return ids;
+    const next = new Set(ids);
+    for (const e of elements) {
+      if (e.groupId && groupIds.has(e.groupId)) next.add(e.id);
+    }
+    return next;
+  };
+
+  const selectIds = (ids: Set<string>) => {
+    setSelectedIds(expandGroups(ids));
   };
 
   const commitElement = (el: Element) => {
@@ -238,6 +324,21 @@ export default function App() {
   const openProjectFileRef = useRef(openProjectFile);
   openProjectFileRef.current = openProjectFile;
 
+  const loadExample = useCallback(async () => {
+    const result = await loadExampleDrawing();
+    if (result.ok) {
+      applyLoadedProject(result.project);
+    } else {
+      setFileError(`Could not load the example drawing: ${result.error}`);
+    }
+  }, []);
+
+  const finishOnboarding = (loadExampleOnFinish: boolean) => {
+    markOnboardingSeen();
+    setOnboardingOpen(false);
+    if (loadExampleOnFinish) void loadExample();
+  };
+
   // Drag-and-drop a `.tdraw` file anywhere on the canvas to open it.
   useEffect(() => {
     const isTdraw = (file: File) =>
@@ -266,19 +367,37 @@ export default function App() {
 
   const deleteSelection = () => {
     if (selectedIds.size === 0) return;
+    // Dimensions measure their parent shape, so they die with it; arrows only
+    // lose the binding on the deleted end and stay on the canvas.
+    const dependentDimensionIds = elements
+      .filter(
+        (e) =>
+          e.type === 'dimension' &&
+          !selectedIds.has(e.id) &&
+          ((e.start.binding && selectedIds.has(e.start.binding.elementId)) ||
+            (e.end.binding && selectedIds.has(e.end.binding.elementId))),
+      )
+      .map((e) => e.id);
+    const deletedIds = new Set([...selectedIds, ...dependentDimensionIds]);
+    if (
+      deletedIds.size > DELETE_CONFIRM_THRESHOLD &&
+      !window.confirm(`Delete ${deletedIds.size} elements? You can undo this with Ctrl+Z.`)
+    ) {
+      return;
+    }
     pushHistory(elements);
     setElements(
       elements
-        .filter((e) => !selectedIds.has(e.id))
+        .filter((e) => !deletedIds.has(e.id))
         .map((e) => {
           if (e.type !== 'arrow') return e;
           const cleared = { ...e };
           let changed = false;
-          if (cleared.startBinding && selectedIds.has(cleared.startBinding.elementId)) {
+          if (cleared.startBinding && deletedIds.has(cleared.startBinding.elementId)) {
             delete cleared.startBinding;
             changed = true;
           }
-          if (cleared.endBinding && selectedIds.has(cleared.endBinding.elementId)) {
+          if (cleared.endBinding && deletedIds.has(cleared.endBinding.elementId)) {
             delete cleared.endBinding;
             changed = true;
           }
@@ -289,9 +408,57 @@ export default function App() {
     setExtendHover(false);
   };
 
+  const copySelection = () => {
+    if (selectedIds.size === 0) return;
+    clipboardRef.current = elements.filter((e) => selectedIds.has(e.id));
+  };
+
+  const pasteClipboard = () => {
+    const clip = clipboardRef.current;
+    if (!clip || clip.length === 0) return;
+    const clones = cloneElements(clip, PASTE_OFFSET, PASTE_OFFSET);
+    pushHistory(elements);
+    setElements([...elements, ...clones]);
+    setSelectedIds(new Set(clones.map((c) => c.id)));
+  };
+
+  const duplicateSelection = () => {
+    if (selectedIds.size === 0) return;
+    const clones = cloneElements(
+      elements.filter((e) => selectedIds.has(e.id)),
+      PASTE_OFFSET,
+      PASTE_OFFSET,
+    );
+    pushHistory(elements);
+    setElements([...elements, ...clones]);
+    setSelectedIds(new Set(clones.map((c) => c.id)));
+  };
+
+  const groupSelection = () => {
+    if (selectedIds.size < 2) return;
+    const groupId = genGroupId();
+    pushHistory(elements);
+    setElements(
+      elements.map((e) => (selectedIds.has(e.id) ? { ...e, groupId } : e)),
+    );
+  };
+
+  const ungroupSelection = () => {
+    if (!elements.some((e) => selectedIds.has(e.id) && e.groupId)) return;
+    pushHistory(elements);
+    setElements(
+      elements.map((e) => {
+        if (!selectedIds.has(e.id) || !e.groupId) return e;
+        const cleared = { ...e };
+        delete cleared.groupId;
+        return cleared;
+      }),
+    );
+  };
+
   const handleDragStart = (ids: string[]) => {
     dragBaseRef.current = elements;
-    dragSelectedRef.current = new Set(ids);
+    dragSelectedRef.current = expandGroups(new Set(ids));
   };
 
   const handleDragMove = (dx: number, dy: number) => {
@@ -617,10 +784,27 @@ export default function App() {
       } else if (mod && ev.key.toLowerCase() === 'a') {
         ev.preventDefault();
         setSelectedIds(new Set(elements.map((e) => e.id)));
+      } else if (mod && ev.key.toLowerCase() === 'c') {
+        ev.preventDefault();
+        copySelection();
+      } else if (mod && ev.key.toLowerCase() === 'v') {
+        ev.preventDefault();
+        pasteClipboard();
+      } else if (mod && ev.key.toLowerCase() === 'd') {
+        ev.preventDefault();
+        duplicateSelection();
+      } else if (mod && ev.key.toLowerCase() === 'g') {
+        ev.preventDefault();
+        if (ev.shiftKey) ungroupSelection();
+        else groupSelection();
       } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
+        ev.preventDefault();
         deleteSelection();
       } else if (ev.key === 'Escape') {
-        setSelectedIds(new Set());
+        // Guard the state update: a no-op setState here would still trigger a
+        // re-render mid keydown-dispatch, which can detach other components'
+        // window keydown listeners before this event finishes propagating.
+        if (selectedIds.size > 0) setSelectedIds(new Set());
       } else if (ev.key === '=' || ev.key === '+') {
         zoomIn();
       } else if (ev.key === '-') {
@@ -671,24 +855,27 @@ export default function App() {
     textareaStyle = { ...textareaStyle, fontSize: TEXT_FONT_SIZE * camera.zoom };
   }
 
-  // Floating color palette above the selected shape(s)
-  const colorableSelected = elements.filter(
-    (e): e is RectElement | EllipseElement =>
-      selectedIds.has(e.id) && (e.type === 'rect' || e.type === 'ellipse'),
+  // Floating palette above the selection: color/font controls when everything
+  // selected is a shape, plus a delete action for any selection.
+  const selectedElements = elements.filter((e) => selectedIds.has(e.id));
+  const colorableSelected = selectedElements.filter(
+    (e): e is RectElement | EllipseElement => e.type === 'rect' || e.type === 'ellipse',
   );
-  const paletteVisible =
-    !editing && selectedIds.size > 0 && colorableSelected.length === selectedIds.size;
+  const allColorable =
+    selectedElements.length > 0 && colorableSelected.length === selectedElements.length;
+  const paletteVisible = !editing && selectedElements.length > 0;
   let paletteBox: { x: number; y: number; w: number; h: number } | null = null;
   if (paletteVisible) {
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
-    for (const e of colorableSelected) {
-      minX = Math.min(minX, e.x);
-      minY = Math.min(minY, e.y);
-      maxX = Math.max(maxX, e.x + e.width);
-      maxY = Math.max(maxY, e.y + e.height);
+    for (const e of selectedElements) {
+      const b = bboxOf(e, elements);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w);
+      maxY = Math.max(maxY, b.y + b.h);
     }
     paletteBox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
@@ -727,7 +914,7 @@ export default function App() {
     }
     const el = paletteRef.current;
     if (el) setPaletteHalfW(el.offsetWidth / 2);
-  }, [paletteVisible]);
+  }, [paletteVisible, allColorable]);
 
   // Screen positions for the "extend to next box" suggestion
   const chipVisible = !!extendRect;
@@ -767,7 +954,7 @@ export default function App() {
         extendPreview={extendPreview}
         onDraftChange={setDraft}
         onCommit={commitElement}
-        onSelect={setSelectedIds}
+        onSelect={selectIds}
         onDragStart={handleDragStart}
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
@@ -792,6 +979,7 @@ export default function App() {
         onNewDrawing={newDrawing}
         onSaveProject={handleSaveProject}
         onOpenProjectFile={(file) => void openProjectFile(file)}
+        onLoadExample={() => void loadExample()}
         onExportPng={handleExportPng}
         onExportSvg={handleExportSvg}
       />
@@ -806,6 +994,7 @@ export default function App() {
         snapEnabled={snapEnabled}
         onToggleGrid={() => setGridEnabled((v) => !v)}
         onToggleSnap={() => setSnapEnabled((v) => !v)}
+        onOpenHelp={() => setHelpOpen(true)}
       />
       <div
         className={`save-indicator${saveFlash ? ' visible' : ''}`}
@@ -845,6 +1034,8 @@ export default function App() {
           data-testid="color-palette"
           style={{ left: paletteScreen.left, top: paletteScreen.top }}
         >
+          {allColorable && (
+            <>
           <button
             type="button"
             className={`color-swatch${currentColor === null ? ' active' : ''}`}
@@ -926,6 +1117,35 @@ export default function App() {
               <span style={{ fontSize: FONT_SCALE_BUTTON_SIZES[s.id] }}>A</span>
             </button>
           ))}
+            </>
+          )}
+          {allColorable && <div className="palette-divider" />}
+          <button
+            type="button"
+            className="palette-delete"
+            data-testid="delete-selection"
+            title="Delete selection (Del)"
+            aria-label="Delete"
+            onClick={deleteSelection}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+          </button>
         </div>
       )}
       {chipScreen && (
@@ -975,6 +1195,8 @@ export default function App() {
           }}
         />
       )}
+      {helpOpen && <HelpModal onClose={closeHelp} />}
+      {onboardingOpen && <OnboardingOverlay onFinish={finishOnboarding} />}
     </>
   );
 }

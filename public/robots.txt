@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://techdraw.pages.dev/sitemap.xml
