@@ -17,6 +17,8 @@ import {
 } from '../components/Canvas';
 import { computeDimensionGeometry, resolveAnchor } from './dimensions';
 import { LABEL_FONT_FAMILY, fitLabelFontSize } from './labelFont';
+import type { MeasurementSettings } from './units';
+import { DEFAULT_MEASUREMENT, formatDistance } from './units';
 
 // Padding (world units) added around the content bounding box so strokes and
 // dimension lines are not clipped at the image edge.
@@ -85,7 +87,12 @@ function downloadBlob(blob: Blob, filename: string): void {
 // PNG export — reuses the on-screen canvas renderer for pixel-parity output.
 // ---------------------------------------------------------------------------
 
-export function exportPng(elements: Element[], scale: number, transparent: boolean): void {
+export function exportPng(
+  elements: Element[],
+  scale: number,
+  transparent: boolean,
+  measurement: MeasurementSettings = DEFAULT_MEASUREMENT,
+): void {
   const bounds = contentBounds(elements);
   if (!bounds) return;
   const canvas = document.createElement('canvas');
@@ -100,7 +107,7 @@ export function exportPng(elements: Element[], scale: number, transparent: boole
   }
   ctx.translate(-bounds.x, -bounds.y);
   for (const el of elements) {
-    drawElement(ctx, el, elements);
+    drawElement(ctx, el, elements, measurement);
   }
   canvas.toBlob((blob) => {
     if (blob) downloadBlob(blob, `techdraw-${timestamp()}.png`);
@@ -156,7 +163,11 @@ function arrowSvg(el: ArrowElement, elements: Element[]): string {
   return path + head;
 }
 
-function dimensionSvg(el: DimensionElement, elements: Element[]): string {
+function dimensionSvg(
+  el: DimensionElement,
+  elements: Element[],
+  measurement: MeasurementSettings,
+): string {
   const p1 = resolveAnchor(el.start, elements);
   const p2 = resolveAnchor(el.end, elements);
   const g = computeDimensionGeometry(p1, p2, el.offset);
@@ -181,7 +192,7 @@ function dimensionSvg(el: DimensionElement, elements: Element[]): string {
   parts.push(`<polygon points="${arrowHeadPoints(g.dimStart.x, g.dimStart.y, ndx, ndy, DIM_ARROW_SIZE, DIM_ARROW_SPREAD)}" fill="${DIM_COLOR}"/>`);
   parts.push(`<polygon points="${arrowHeadPoints(g.dimEnd.x, g.dimEnd.y, -ndx, -ndy, DIM_ARROW_SIZE, DIM_ARROW_SPREAD)}" fill="${DIM_COLOR}"/>`);
 
-  const label = Math.round(g.distance).toString();
+  const label = formatDistance(g.distance, measurement);
   // Approximate the canvas measureText width so the white knockout behind the
   // label matches what the on-screen renderer produces.
   const tw = label.length * DIM_TEXT_FONT_SIZE * 0.6 + 8;
@@ -200,7 +211,11 @@ function dimensionSvg(el: DimensionElement, elements: Element[]): string {
   return parts.join('');
 }
 
-function elementSvg(el: Element, elements: Element[]): string {
+function elementSvg(
+  el: Element,
+  elements: Element[],
+  measurement: MeasurementSettings,
+): string {
   switch (el.type) {
     case 'pencil': {
       if (el.points.length === 0) return '';
@@ -239,14 +254,17 @@ function elementSvg(el: Element, elements: Element[]): string {
         `fill="${STROKE}" dominant-baseline="hanging">${escapeXml(el.text)}</text>`
       );
     case 'dimension':
-      return dimensionSvg(el, elements);
+      return dimensionSvg(el, elements, measurement);
   }
 }
 
-export function buildSvg(elements: Element[]): string | null {
+export function buildSvg(
+  elements: Element[],
+  measurement: MeasurementSettings = DEFAULT_MEASUREMENT,
+): string | null {
   const bounds = contentBounds(elements);
   if (!bounds) return null;
-  const body = elements.map((el) => elementSvg(el, elements)).join('');
+  const body = elements.map((el) => elementSvg(el, elements, measurement)).join('');
   const vb = `${round2(bounds.x)} ${round2(bounds.y)} ${round2(bounds.w)} ${round2(bounds.h)}`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${round2(bounds.w)}" height="${round2(bounds.h)}">` +
@@ -256,8 +274,11 @@ export function buildSvg(elements: Element[]): string | null {
   );
 }
 
-export function exportSvg(elements: Element[]): void {
-  const svg = buildSvg(elements);
+export function exportSvg(
+  elements: Element[],
+  measurement: MeasurementSettings = DEFAULT_MEASUREMENT,
+): void {
+  const svg = buildSvg(elements, measurement);
   if (!svg) return;
   downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `techdraw-${timestamp()}.svg`);
 }

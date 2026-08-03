@@ -1,5 +1,7 @@
 import type { Camera } from './camera';
 import type { Element } from '../types';
+import type { Unit } from './units';
+import { isUnit, isValidScale } from './units';
 
 declare const __APP_VERSION__: string;
 
@@ -19,6 +21,9 @@ export interface ProjectFile {
   camera: Camera;
   gridEnabled: boolean;
   snapEnabled: boolean;
+  /** Absent in files written before measurement units existed. */
+  unit?: Unit;
+  scale?: number;
 }
 
 export interface ProjectState {
@@ -27,6 +32,8 @@ export interface ProjectState {
   camera: Camera;
   gridEnabled: boolean;
   snapEnabled: boolean;
+  unit: Unit;
+  scale: number;
 }
 
 export type ParseResult = { ok: true; project: ProjectFile } | { ok: false; error: string };
@@ -118,6 +125,8 @@ export function serializeProject(state: ProjectState, createdAt?: string): strin
     camera: state.camera,
     gridEnabled: state.gridEnabled,
     snapEnabled: state.snapEnabled,
+    unit: state.unit,
+    scale: state.scale,
   };
   return JSON.stringify(file, null, 2);
 }
@@ -158,6 +167,12 @@ export function parseProject(text: string): ParseResult {
     cam.zoom <= 0
   ) {
     return { ok: false, error: 'Project has an invalid viewport.' };
+  }
+  if (p.unit !== undefined && !isUnit(p.unit)) {
+    return { ok: false, error: `Project has an unknown measurement unit "${String(p.unit)}".` };
+  }
+  if (p.scale !== undefined && !isValidScale(p.scale)) {
+    return { ok: false, error: 'Project has an invalid drawing scale.' };
   }
   return { ok: true, project: data as ProjectFile };
 }

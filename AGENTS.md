@@ -44,11 +44,12 @@ src/
 │   ├── Toolbar.tsx      # Tool palette (select, pencil, rect, ellipse, line, arrow, text, dimension)
 │   │                    #   + undo/redo buttons
 │   ├── ZoomControls.tsx # Zoom in / out / reset buttons
-│   └── GridControls.tsx # Grid & snap toggle buttons
+│   └── GridControls.tsx # Grid & snap toggles, measurement unit selector, drawing scale input
 └── lib/
     ├── camera.ts        # Camera (pan/zoom) model, screen↔world transforms, grid snapping helpers
     ├── dimensions.ts    # Dimension-line geometry, rendering (drawDimension), hit-testing, bbox
     ├── labelFont.ts     # Label font-size fitting logic for shape labels (S/M/L scales)
+    ├── units.ts         # Measurement units, px-to-unit scale, distance formatting, scale-bar spec
     ├── export.ts        # PNG and SVG export from the content bounding box
     ├── storage.ts       # localStorage auto-save persistence
     └── projectFile.ts   # .tdraw project file save/open (download + drag-and-drop)
@@ -107,3 +108,4 @@ Current decisions:
 | [0010](./docs/adr/0010-static-seo-assets-and-playwright-image-generation.md) | Static SEO assets and Playwright-generated social images | Accepted |
 | [0011](./docs/adr/0011-seo-audit-fixes-wordmark-h1-and-www-redirect.md) | SEO audit fixes: wordmark H1, trimmed description, www redirect | Accepted |
 | [0012](./docs/adr/0012-mobile-touch-support.md) | Mobile and touch-device support | Accepted |
+| [0013](./docs/adr/0013-measurement-units-and-drawing-scale.md) | Measurement units and drawing scale as a px-to-unit scalar | Accepted |
