@@ -3,6 +3,7 @@ import type { Element } from '../types';
 
 export const STORAGE_KEY = 'techdraw-project';
 export const SCHEMA_VERSION = 1;
+export const ONBOARDING_KEY = 'techdraw-onboarded';
 
 export interface SavedProject {
   version: number;
@@ -60,4 +61,20 @@ function isQuotaError(err: unknown): boolean {
       err.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
       err.code === 22)
   );
+}
+
+export function hasSeenOnboarding(): boolean {
+  try {
+    return localStorage.getItem(ONBOARDING_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function markOnboardingSeen(): void {
+  try {
+    localStorage.setItem(ONBOARDING_KEY, new Date().toISOString());
+  } catch {
+    // Storage unavailable — the tour will show again on the next visit.
+  }
 }

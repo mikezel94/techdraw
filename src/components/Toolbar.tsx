@@ -150,6 +150,7 @@ interface ToolbarProps {
   onNewDrawing: () => void;
   onSaveProject: () => void;
   onOpenProjectFile: (file: File) => void;
+  onLoadExample: () => void;
   onExportPng: (opts: PngExportOptions) => void;
   onExportSvg: () => void;
 }
@@ -165,6 +166,7 @@ export default function Toolbar({
   onNewDrawing,
   onSaveProject,
   onOpenProjectFile,
+  onLoadExample,
   onExportPng,
   onExportSvg,
 }: ToolbarProps) {
@@ -178,6 +180,7 @@ export default function Toolbar({
           className={t.id === tool ? 'active' : ''}
           title={t.title}
           aria-label={t.name}
+          data-testid={`tool-${t.id}`}
           onClick={() => onToolChange(t.id)}
         >
           <ToolIcon>{TOOL_ICONS[t.id]}</ToolIcon>
@@ -253,6 +256,19 @@ export default function Toolbar({
           if (file) onOpenProjectFile(file);
         }}
       />
+      <button
+        type="button"
+        onClick={onLoadExample}
+        title="Load example drawing"
+        aria-label="Load example drawing"
+        data-testid="load-example"
+      >
+        <ToolIcon>
+          <rect x="3" y="4" width="18" height="16" rx="1.5" />
+          <circle cx="9" cy="10" r="1.6" />
+          <polyline points="4.5 18.5 10 13 13.5 16.5 16 14 19.5 17.5" />
+        </ToolIcon>
+      </button>
       <div className="divider" />
       <ExportMenu elementCount={elementCount} onExportPng={onExportPng} onExportSvg={onExportSvg} />
       <div className="divider" />

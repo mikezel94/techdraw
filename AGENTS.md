@@ -102,3 +102,5 @@ Current decisions:
 | [0005](./docs/adr/0005-png-svg-export.md) | PNG and SVG export from the content bounding box | Accepted |
 | [0006](./docs/adr/0006-tdraw-project-files.md) | Portable `.tdraw` project files | Accepted |
 | [0007](./docs/adr/0007-grouping-via-shared-groupid.md) | Grouping via a shared groupId on elements | Accepted |
+| [0008](./docs/adr/0008-hand-rolled-onboarding-overlay.md) | Hand-rolled onboarding overlay | Accepted |
+| [0009](./docs/adr/0009-example-drawing-static-asset.md) | Example drawing as a static `.tdraw`-format asset | Accepted |

@@ -199,6 +199,18 @@ canvas {
   color: #1e1e1e;
 }
 
+.grid-controls-divider {
+  width: 1px;
+  height: 16px;
+  background: #e0e0e0;
+}
+
+.grid-controls .help-button {
+  width: 24px;
+  padding: 0;
+  font-weight: 600;
+}
+
 /* ---- Shape color palette (floats above the selection) ---- */
 
 .color-palette {
@@ -500,4 +512,210 @@ canvas {
   line-height: 1;
   padding: 0 2px;
   cursor: pointer;
+}
+
+/* ---- First-visit onboarding overlay ---- */
+
+.onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+/* Cut-out effect: the element itself stays clear while a huge shadow
+   darkens everything outside it. */
+.onboarding-spotlight {
+  position: fixed;
+  border-radius: 12px;
+  box-shadow: 0 0 0 100vmax rgba(15, 23, 42, 0.55);
+  pointer-events: none;
+  transition: top 0.18s ease, left 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+
+.onboarding-popover {
+  position: fixed;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  padding: 14px 16px;
+  animation: palette-fade 0.15s ease-out;
+}
+
+.onboarding-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.onboarding-step-count {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #666666;
+}
+
+.onboarding-skip {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #666666;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.onboarding-skip:hover {
+  background: #f0f0f0;
+  color: #1e1e1e;
+}
+
+.onboarding-popover h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.onboarding-popover p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #444444;
+}
+
+.onboarding-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.onboarding-footer button {
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  color: #1e1e1e;
+  cursor: pointer;
+}
+
+.onboarding-footer button:hover {
+  background: #f0f0f0;
+}
+
+.onboarding-footer button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.onboarding-footer button.primary:hover {
+  background: #1d4ed8;
+}
+
+/* ---- Modal (help) ---- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+}
+
+.modal {
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 16px 20px;
+  animation: palette-fade 0.15s ease-out;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.modal-header button {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: #666666;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.modal-header button:hover {
+  background: #f0f0f0;
+  color: #1e1e1e;
+}
+
+.modal h3 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #666666;
+}
+
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.shortcut-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #666666;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 4px 6px;
+}
+
+.shortcut-table td {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 5px 6px;
+}
+
+.shortcut-table kbd {
+  font-family: inherit;
+  font-size: 12px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.help-tips {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #444444;
+}
+
+.help-links {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: #444444;
+}
+
+.help-links a {
+  color: #2563eb;
 }

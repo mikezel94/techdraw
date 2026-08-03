@@ -4,6 +4,8 @@ import Canvas, { bboxOf } from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import ZoomControls from './components/ZoomControls';
 import GridControls from './components/GridControls';
+import OnboardingOverlay from './components/OnboardingOverlay';
+import HelpModal from './components/HelpModal';
 import type {
   ArrowBinding,
   ArrowElement,
@@ -18,9 +20,16 @@ import { genId, genGroupId } from './types';
 import type { Camera } from './lib/camera';
 import { DEFAULT_CAMERA, clampZoom } from './lib/camera';
 import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './lib/labelFont';
-import { clearProject, loadProject, saveProject } from './lib/storage';
+import {
+  clearProject,
+  hasSeenOnboarding,
+  loadProject,
+  markOnboardingSeen,
+  saveProject,
+} from './lib/storage';
 import { exportPng, exportSvg } from './lib/export';
 import { downloadProject, readProjectFile } from './lib/projectFile';
+import { loadExampleDrawing } from './lib/exampleDrawing';
 import type { ProjectFile } from './lib/projectFile';
 import type { PngExportOptions } from './components/Toolbar';
 
@@ -147,6 +156,9 @@ export default function App() {
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [title, setTitle] = useState('Untitled');
   const [fileError, setFileError] = useState<string | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(() => !hasSeenOnboarding());
+  const [helpOpen, setHelpOpen] = useState(false);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
 
   const dragBaseRef = useRef<Element[] | null>(null);
   const dragSelectedRef = useRef<Set<string>>(new Set());
@@ -311,6 +323,21 @@ export default function App() {
 
   const openProjectFileRef = useRef(openProjectFile);
   openProjectFileRef.current = openProjectFile;
+
+  const loadExample = useCallback(async () => {
+    const result = await loadExampleDrawing();
+    if (result.ok) {
+      applyLoadedProject(result.project);
+    } else {
+      setFileError(`Could not load the example drawing: ${result.error}`);
+    }
+  }, []);
+
+  const finishOnboarding = (loadExampleOnFinish: boolean) => {
+    markOnboardingSeen();
+    setOnboardingOpen(false);
+    if (loadExampleOnFinish) void loadExample();
+  };
 
   // Drag-and-drop a `.tdraw` file anywhere on the canvas to open it.
   useEffect(() => {
@@ -774,7 +801,10 @@ export default function App() {
         ev.preventDefault();
         deleteSelection();
       } else if (ev.key === 'Escape') {
-        setSelectedIds(new Set());
+        // Guard the state update: a no-op setState here would still trigger a
+        // re-render mid keydown-dispatch, which can detach other components'
+        // window keydown listeners before this event finishes propagating.
+        if (selectedIds.size > 0) setSelectedIds(new Set());
       } else if (ev.key === '=' || ev.key === '+') {
         zoomIn();
       } else if (ev.key === '-') {
@@ -949,6 +979,7 @@ export default function App() {
         onNewDrawing={newDrawing}
         onSaveProject={handleSaveProject}
         onOpenProjectFile={(file) => void openProjectFile(file)}
+        onLoadExample={() => void loadExample()}
         onExportPng={handleExportPng}
         onExportSvg={handleExportSvg}
       />
@@ -963,6 +994,7 @@ export default function App() {
         snapEnabled={snapEnabled}
         onToggleGrid={() => setGridEnabled((v) => !v)}
         onToggleSnap={() => setSnapEnabled((v) => !v)}
+        onOpenHelp={() => setHelpOpen(true)}
       />
       <div
         className={`save-indicator${saveFlash ? ' visible' : ''}`}
@@ -1163,6 +1195,8 @@ export default function App() {
           }}
         />
       )}
+      {helpOpen && <HelpModal onClose={closeHelp} />}
+      {onboardingOpen && <OnboardingOverlay onFinish={finishOnboarding} />}
     </>
   );
 }

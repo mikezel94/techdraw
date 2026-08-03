@@ -3,9 +3,16 @@ interface GridControlsProps {
   snapEnabled: boolean;
   onToggleGrid: () => void;
   onToggleSnap: () => void;
+  onOpenHelp: () => void;
 }
 
-export default function GridControls({ gridEnabled, snapEnabled, onToggleGrid, onToggleSnap }: GridControlsProps) {
+export default function GridControls({
+  gridEnabled,
+  snapEnabled,
+  onToggleGrid,
+  onToggleSnap,
+  onOpenHelp,
+}: GridControlsProps) {
   return (
     <div className="grid-controls">
       <button
@@ -23,6 +30,17 @@ export default function GridControls({ gridEnabled, snapEnabled, onToggleGrid, o
         title="Toggle snap to grid"
       >
         Snap
+      </button>
+      <div className="grid-controls-divider" />
+      <button
+        type="button"
+        className="help-button"
+        onClick={onOpenHelp}
+        title="Help & keyboard shortcuts"
+        aria-label="Help"
+        data-testid="help-button"
+      >
+        ?
       </button>
     </div>
   );
