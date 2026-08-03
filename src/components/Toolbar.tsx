@@ -3,6 +3,21 @@ import type { ReactNode } from 'react';
 import type { Tool } from '../types';
 import { PROJECT_FILE_EXT } from '../lib/projectFile';
 
+// Below this width the toolbar collapses into a bottom sheet with 44px touch
+// targets (same breakpoint as the mobile notice in App.tsx).
+export const MOBILE_MEDIA_QUERY = '(max-width: 767px)';
+
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_MEDIA_QUERY).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(MOBILE_MEDIA_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return isMobile;
+}
+
 const TOOLS: { id: Tool; name: string; title: string }[] = [
   { id: 'select', name: 'Select', title: 'Select & Move (V)' },
   { id: 'pencil', name: 'Pencil', title: 'Freehand draw (P)' },
@@ -171,8 +186,39 @@ export default function Toolbar({
   onExportSvg,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const isMobile = useIsMobile();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const pickTool = (t: Tool) => {
+    onToolChange(t);
+    // Tools are one-shot: drop the sheet back down so the canvas is clear.
+    if (isMobile) setSheetOpen(false);
+  };
   return (
-    <div className="toolbar">
+    <div className={`toolbar${isMobile && sheetOpen ? ' open' : ''}`}>
+      <button
+        type="button"
+        className="toolbar-toggle"
+        title={sheetOpen ? 'Close toolbar' : 'Open toolbar'}
+        aria-label={sheetOpen ? 'Close toolbar' : 'Open toolbar'}
+        aria-expanded={sheetOpen}
+        data-testid="toolbar-toggle"
+        onClick={() => setSheetOpen((v) => !v)}
+      >
+        <ToolIcon>
+          {sheetOpen ? (
+            <>
+              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="6" y1="18" x2="18" y2="6" />
+            </>
+          ) : (
+            <>
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </>
+          )}
+        </ToolIcon>
+      </button>
       {TOOLS.map((t) => (
         <button
           key={t.id}
@@ -181,7 +227,7 @@ export default function Toolbar({
           title={t.title}
           aria-label={t.name}
           data-testid={`tool-${t.id}`}
-          onClick={() => onToolChange(t.id)}
+          onClick={() => pickTool(t.id)}
         >
           <ToolIcon>{TOOL_ICONS[t.id]}</ToolIcon>
         </button>

@@ -105,3 +105,4 @@ Current decisions:
 | [0008](./docs/adr/0008-hand-rolled-onboarding-overlay.md) | Hand-rolled onboarding overlay | Accepted |
 | [0009](./docs/adr/0009-example-drawing-static-asset.md) | Example drawing as a static `.tdraw`-format asset | Accepted |
 | [0010](./docs/adr/0010-static-seo-assets-and-playwright-image-generation.md) | Static SEO assets and Playwright-generated social images | Accepted |
+| [0011](./docs/adr/0011-mobile-touch-support.md) | Mobile and touch-device support | Accepted |

@@ -6,6 +6,7 @@ import ZoomControls from './components/ZoomControls';
 import GridControls from './components/GridControls';
 import OnboardingOverlay from './components/OnboardingOverlay';
 import HelpModal from './components/HelpModal';
+import MobileNotice from './components/MobileNotice';
 import type {
   ArrowBinding,
   ArrowElement,
@@ -22,6 +23,8 @@ import { DEFAULT_CAMERA, clampZoom } from './lib/camera';
 import { fitLabelFontSize, FONT_SCALES, LABEL_FONT_FAMILY } from './lib/labelFont';
 import {
   clearProject,
+  dismissMobileNotice,
+  hasDismissedMobileNotice,
   hasSeenOnboarding,
   loadProject,
   markOnboardingSeen,
@@ -44,6 +47,7 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
 const SAVE_FLASH_MS = 2000;
 const DELETE_CONFIRM_THRESHOLD = 10;
 const PASTE_OFFSET = 20;
+const MOBILE_NOTICE_WIDTH = 768;
 // "A" glyph sizes used on the S/M/L palette buttons.
 const FONT_SCALE_BUTTON_SIZES: Record<FontScale, number> = { small: 10, medium: 13, large: 16 };
 
@@ -159,6 +163,14 @@ export default function App() {
   const [onboardingOpen, setOnboardingOpen] = useState(() => !hasSeenOnboarding());
   const [helpOpen, setHelpOpen] = useState(false);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
+  const [mobileNoticeOpen, setMobileNoticeOpen] = useState(
+    () => window.innerWidth < MOBILE_NOTICE_WIDTH && !hasDismissedMobileNotice(),
+  );
+
+  const dismissNotice = () => {
+    dismissMobileNotice();
+    setMobileNoticeOpen(false);
+  };
 
   const dragBaseRef = useRef<Element[] | null>(null);
   const dragSelectedRef = useRef<Set<string>>(new Set());
@@ -1197,6 +1209,7 @@ export default function App() {
       )}
       {helpOpen && <HelpModal onClose={closeHelp} />}
       {onboardingOpen && <OnboardingOverlay onFinish={finishOnboarding} />}
+      {mobileNoticeOpen && <MobileNotice onDismiss={dismissNotice} />}
     </>
   );
 }

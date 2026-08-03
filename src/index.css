@@ -25,6 +25,57 @@ canvas {
   touch-action: none;
 }
 
+/* ---- Small-screen notice ---- */
+
+.mobile-notice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.mobile-notice {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  padding: 22px 20px;
+  max-width: 360px;
+  text-align: center;
+  animation: palette-fade 0.15s ease-out;
+}
+
+.mobile-notice h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.mobile-notice p {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #444444;
+}
+
+.mobile-notice-action {
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  border-radius: 10px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px 22px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.mobile-notice-action:hover {
+  background: #1d4ed8;
+}
+
 /* ---- Top toolbar ---- */
 
 .toolbar {
@@ -60,6 +111,11 @@ canvas {
 
 .toolbar button svg {
   display: block;
+}
+
+/* Mobile-only handle that expands the toolbar into a bottom sheet. */
+.toolbar-toggle {
+  display: none;
 }
 
 .toolbar button:hover:not(:disabled) {
@@ -718,4 +774,160 @@ canvas {
 
 .help-links a {
   color: #2563eb;
+}
+
+/* ---- Small screens / touch devices ----
+   The toolbar becomes a bottom sheet, floating controls lift above it, and
+   every interactive element grows to a 44x44px touch target (Apple HIG).
+   Safe-area insets keep clear of notches and home indicators. */
+
+@media (max-width: 767px) {
+  button {
+    touch-action: manipulation;
+  }
+
+  .toolbar {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 14px 14px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    max-height: 45vh;
+    overflow-y: auto;
+    z-index: 30;
+  }
+
+  .toolbar-toggle {
+    display: flex;
+  }
+
+  .toolbar:not(.open) > :not(.toolbar-toggle) {
+    display: none;
+  }
+
+  .toolbar .divider,
+  .toolbar .status {
+    display: none;
+  }
+
+  .toolbar button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .export-menu {
+    width: 44px;
+    height: 44px;
+    justify-content: center;
+  }
+
+  .export-menu-items {
+    top: auto;
+    bottom: calc(100% + 6px);
+    left: auto;
+    right: 0;
+    transform: none;
+  }
+
+  .export-menu-items button {
+    width: auto;
+    height: auto;
+    min-height: 44px;
+  }
+
+  .zoom-controls {
+    left: 8px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .zoom-controls button {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .zoom-controls .zoom-level {
+    min-width: 52px;
+  }
+
+  .grid-controls {
+    right: 8px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .grid-controls button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .grid-controls .help-button {
+    width: 44px;
+  }
+
+  .color-palette {
+    max-width: calc(100vw - 16px);
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 16px;
+  }
+
+  /* 44px hit area, visual swatch stays a centered 24px dot. */
+  .color-swatch {
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+    background-clip: content-box;
+    box-shadow: none;
+  }
+
+  .color-swatch.active {
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #4a90d9;
+  }
+
+  .font-scale,
+  .palette-delete {
+    width: 44px;
+    height: 44px;
+  }
+
+  .extend-chip {
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+  }
+
+  .save-indicator {
+    top: 12px;
+    bottom: auto;
+    right: 12px;
+  }
+
+  .restore-toast button,
+  .storage-warning button,
+  .file-error button {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 20px;
+  }
+
+  .onboarding-skip {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .onboarding-footer button {
+    min-height: 44px;
+  }
+
+  .modal-header button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

@@ -10,7 +10,7 @@ import type {
 } from '../types';
 import { genId } from '../types';
 import type { Camera } from '../lib/camera';
-import { screenToWorld, snapPointToGrid, getGridStep } from '../lib/camera';
+import { screenToWorld, snapPointToGrid, getGridStep, clampZoom, zoomAtPoint } from '../lib/camera';
 import { drawDimension, hitDimension, bboxOfDimension, DIM_OFFSET } from '../lib/dimensions';
 import { fitLabelFontSize, LABEL_FONT_FAMILY, LABEL_PAD } from '../lib/labelFont';
 
@@ -667,6 +667,53 @@ export default function Canvas({
   const lastClickRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
+  // Active touch pointers (screen coords), keyed by pointerId. Two concurrent
+  // touches switch the canvas into pinch/pan mode.
+  const touchesRef = useRef<Map<number, Point>>(new Map());
+  const pinchRef = useRef<{ startDist: number; startZoom: number; anchorWorld: Point } | null>(
+    null,
+  );
+
+  // Anchors the pinch to the current midpoint: the world point under it stays
+  // under it while the finger distance change drives the zoom.
+  const beginPinch = (pts: Point[]) => {
+    const dist = Math.max(Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y), 1);
+    const midX = (pts[0].x + pts[1].x) / 2;
+    const midY = (pts[0].y + pts[1].y) / 2;
+    const cam = cameraRef.current;
+    pinchRef.current = {
+      startDist: dist,
+      startZoom: cam.zoom,
+      anchorWorld: screenToWorld(cam, midX, midY),
+    };
+  };
+
+  // A second finger landing mid-gesture cancels whatever the first finger was
+  // doing (draw, drag, marquee, pan) before pinch mode takes over.
+  const cancelActiveGesture = () => {
+    if (draftRef.current) {
+      draftRef.current = null;
+      onDraftChange(null);
+    }
+    if (endpointRef.current) {
+      onDragEnd(false);
+      endpointRef.current = null;
+    }
+    if (bendRef.current) {
+      onDragEnd(false);
+      bendRef.current = null;
+    }
+    if (moveRef.current) {
+      onDragEnd(false);
+      moveRef.current = null;
+    }
+    if (marqueeRef.current) {
+      marqueeRef.current = null;
+      setMarqueeBox(null);
+    }
+    panRef.current = null;
+    setSnapHint(null);
+  };
 
   const [snapHint, setSnapHint] = useState<{ targetId: string; point: Point } | null>(null);
   const [handleHover, setHandleHover] = useState(false);
@@ -769,13 +816,7 @@ export default function Canvas({
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
-      const world = screenToWorld(cam, sx, sy);
-      const clampedZoom = Math.max(0.1, Math.min(10, newZoom));
-      onCameraChange({
-        x: sx - world.x * clampedZoom,
-        y: sy - world.y * clampedZoom,
-        zoom: clampedZoom,
-      });
+      onCameraChange(zoomAtPoint(cam, sx, sy, newZoom));
     };
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
@@ -789,6 +830,19 @@ export default function Canvas({
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
     const p = screenToWorld(camera, screenX, screenY);
+
+    // Touch: the second concurrent finger switches to pinch/pan mode.
+    if (e.pointerType === 'touch') {
+      touchesRef.current.set(e.pointerId, { x: screenX, y: screenY });
+      const touches = [...touchesRef.current.values()];
+      if (touches.length === 2) {
+        canvasRef.current?.setPointerCapture(e.pointerId);
+        cancelActiveGesture();
+        beginPinch(touches);
+        return;
+      }
+      if (touches.length > 2) return;
+    }
 
     // Pan: middle mouse or space + left click
     if (e.button === 1 || (spaceHeld && e.button === 0)) {
@@ -977,6 +1031,32 @@ export default function Canvas({
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
 
+    // Pinch-to-zoom + two-finger pan: the midpoint movement pans while the
+    // finger distance change zooms, anchored at the pinch's start midpoint.
+    if (e.pointerType === 'touch') {
+      const tracked = touchesRef.current.get(e.pointerId);
+      if (tracked) {
+        tracked.x = screenX;
+        tracked.y = screenY;
+      }
+      const pinch = pinchRef.current;
+      if (pinch) {
+        const pts = [...touchesRef.current.values()];
+        if (pts.length >= 2) {
+          const dist = Math.max(Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y), 1);
+          const midX = (pts[0].x + pts[1].x) / 2;
+          const midY = (pts[0].y + pts[1].y) / 2;
+          const zoom = clampZoom(pinch.startZoom * (dist / pinch.startDist));
+          onCameraChange({
+            x: midX - pinch.anchorWorld.x * zoom,
+            y: midY - pinch.anchorWorld.y * zoom,
+            zoom,
+          });
+        }
+        return;
+      }
+    }
+
     // Panning
     if (panRef.current) {
       const dx = screenX - panRef.current.startX;
@@ -1099,7 +1179,26 @@ export default function Canvas({
     onDraftChange(draftRef.current);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') {
+      touchesRef.current.delete(e.pointerId);
+      if (pinchRef.current) {
+        const pts = [...touchesRef.current.values()];
+        if (pts.length >= 2) {
+          // More than two fingers were down; re-anchor around the survivors.
+          beginPinch(pts);
+        } else {
+          pinchRef.current = null;
+          if (pts.length === 1) {
+            // One finger survives the pinch: it keeps panning the canvas.
+            const cam = cameraRef.current;
+            panRef.current = { startX: pts[0].x, startY: pts[0].y, camX: cam.x, camY: cam.y };
+          }
+        }
+        return;
+      }
+    }
+
     setSnapHint(null);
 
     if (panRef.current) {
@@ -1169,7 +1268,16 @@ export default function Canvas({
     }
   };
 
-  const handlePointerCancel = () => {
+  const handlePointerCancel = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') {
+      touchesRef.current.delete(e.pointerId);
+      if (pinchRef.current) {
+        const pts = [...touchesRef.current.values()];
+        if (pts.length >= 2) beginPinch(pts);
+        else pinchRef.current = null;
+        return;
+      }
+    }
     setSnapHint(null);
     panRef.current = null;
     pendingDimRef.current = null;
