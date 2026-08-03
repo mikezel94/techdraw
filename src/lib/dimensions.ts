@@ -1,4 +1,6 @@
 import type { Anchor, DimensionElement, Element, Point } from '../types';
+import type { MeasurementSettings } from './units';
+import { DEFAULT_MEASUREMENT, formatDistance } from './units';
 
 const DIM_OFFSET = 30;
 const EXTENSION_OVERSHOOT = 6;
@@ -125,6 +127,7 @@ export function drawDimension(
   ctx: CanvasRenderingContext2D,
   dim: DimensionElement,
   elements: Element[],
+  measurement: MeasurementSettings = DEFAULT_MEASUREMENT,
 ) {
   const p1 = resolveAnchor(dim.start, elements);
   const p2 = resolveAnchor(dim.end, elements);
@@ -163,7 +166,7 @@ export function drawDimension(
   ctx.font = TEXT_FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const label = Math.round(g.distance).toString();
+  const label = formatDistance(g.distance, measurement);
   const metrics = ctx.measureText(label);
   const tw = metrics.width + TEXT_PADDING * 2;
   const th = 16;

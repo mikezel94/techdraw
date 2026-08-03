@@ -35,6 +35,8 @@ import { downloadProject, readProjectFile } from './lib/projectFile';
 import { loadExampleDrawing } from './lib/exampleDrawing';
 import type { ProjectFile } from './lib/projectFile';
 import type { PngExportOptions } from './components/Toolbar';
+import type { MeasurementSettings, Unit } from './lib/units';
+import { DEFAULT_MEASUREMENT, isUnit, isValidScale } from './lib/units';
 
 const TEXT_FONT = '20px sans-serif';
 const TEXT_FONT_SIZE = 20;
@@ -151,6 +153,12 @@ export default function App() {
   const [camera, setCamera] = useState<Camera>(() => restored?.camera ?? DEFAULT_CAMERA);
   const [gridEnabled, setGridEnabled] = useState(() => restored?.gridEnabled ?? true);
   const [snapEnabled, setSnapEnabled] = useState(() => restored?.snapEnabled ?? true);
+  const [unit, setUnit] = useState<Unit>(() =>
+    restored && isUnit(restored.unit) ? restored.unit : DEFAULT_MEASUREMENT.unit,
+  );
+  const [scale, setScale] = useState<number>(() =>
+    restored && isValidScale(restored.scale) ? restored.scale : DEFAULT_MEASUREMENT.scale,
+  );
   const [gridSize] = useState(20);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [extendHover, setExtendHover] = useState(false);
@@ -245,7 +253,7 @@ export default function App() {
         clearProject();
         return;
       }
-      const result = saveProject({ elements, camera, gridEnabled, snapEnabled });
+      const result = saveProject({ elements, camera, gridEnabled, snapEnabled, unit, scale });
       if (result.ok) {
         setStorageWarning(null);
         setSaveFlash(true);
@@ -258,7 +266,7 @@ export default function App() {
       }
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [elements, camera, gridEnabled, snapEnabled]);
+  }, [elements, camera, gridEnabled, snapEnabled, unit, scale]);
 
   useEffect(() => {
     if (!saveFlash) return;
@@ -278,6 +286,8 @@ export default function App() {
     setCamera(DEFAULT_CAMERA);
     setGridEnabled(true);
     setSnapEnabled(true);
+    setUnit(DEFAULT_MEASUREMENT.unit);
+    setScale(DEFAULT_MEASUREMENT.scale);
     setTool('pencil');
     setTitle('Untitled');
     setRestoredAt(null);
@@ -285,18 +295,20 @@ export default function App() {
     setFileError(null);
   };
 
-  const handleExportPng = ({ scale, transparent }: PngExportOptions) => {
+  const measurement: MeasurementSettings = { unit, scale };
+
+  const handleExportPng = ({ scale: exportScale, transparent }: PngExportOptions) => {
     if (elements.length === 0) return;
-    exportPng(elements, scale, transparent);
+    exportPng(elements, exportScale, transparent, measurement);
   };
 
   const handleExportSvg = () => {
     if (elements.length === 0) return;
-    exportSvg(elements);
+    exportSvg(elements, measurement);
   };
 
   const handleSaveProject = () => {
-    downloadProject({ title, elements, camera, gridEnabled, snapEnabled });
+    downloadProject({ title, elements, camera, gridEnabled, snapEnabled, unit, scale });
   };
 
   // Replaces the whole scene with a parsed project file. Shared by the Open
@@ -311,6 +323,8 @@ export default function App() {
     setCamera(project.camera);
     setGridEnabled(project.gridEnabled);
     setSnapEnabled(project.snapEnabled);
+    setUnit(project.unit ?? DEFAULT_MEASUREMENT.unit);
+    setScale(project.scale ?? DEFAULT_MEASUREMENT.scale);
     setTool('select');
     setTitle(project.title);
     setRestoredAt(null);
@@ -776,7 +790,12 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (ev: KeyboardEvent) => {
       const target = ev.target as HTMLElement | null;
-      if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) return;
+      if (
+        target &&
+        (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.tagName === 'SELECT')
+      ) {
+        return;
+      }
 
       if (ev.code === 'Space') {
         ev.preventDefault();
@@ -963,6 +982,7 @@ export default function App() {
         gridSize={gridSize}
         spaceHeld={spaceHeld}
         extendPreview={extendPreview}
+        measurement={measurement}
         onDraftChange={setDraft}
         onCommit={commitElement}
         onSelect={selectIds}
@@ -1003,8 +1023,12 @@ export default function App() {
       <GridControls
         gridEnabled={gridEnabled}
         snapEnabled={snapEnabled}
+        unit={unit}
+        scale={scale}
         onToggleGrid={() => setGridEnabled((v) => !v)}
         onToggleSnap={() => setSnapEnabled((v) => !v)}
+        onUnitChange={setUnit}
+        onScaleChange={setScale}
         onOpenHelp={() => setHelpOpen(true)}
       />
       <div

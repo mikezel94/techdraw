@@ -77,3 +77,4 @@ What follows from this decision — benefits, costs, and new constraints.
 | [0010](./0010-static-seo-assets-and-playwright-image-generation.md) | Static SEO assets and Playwright-generated social images | Accepted | 2026-08-03 |
 | [0011](./0011-seo-audit-fixes-wordmark-h1-and-www-redirect.md) | SEO audit fixes: wordmark H1, trimmed description, www redirect | Accepted | 2026-08-03 |
 | [0012](./0012-mobile-touch-support.md) | Mobile and touch-device support | Accepted | 2026-08-03 |
+| [0013](./0013-measurement-units-and-drawing-scale.md) | Measurement units and drawing scale as a px-to-unit scalar | Accepted | 2026-08-03 |

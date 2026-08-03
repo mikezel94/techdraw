@@ -1,5 +1,6 @@
 import type { Camera } from './camera';
 import type { Element } from '../types';
+import type { Unit } from './units';
 
 export const STORAGE_KEY = 'techdraw-project';
 export const SCHEMA_VERSION = 1;
@@ -13,6 +14,9 @@ export interface SavedProject {
   camera: Camera;
   gridEnabled: boolean;
   snapEnabled: boolean;
+  /** Absent in saves written before measurement units existed. */
+  unit?: Unit;
+  scale?: number;
 }
 
 export type SaveResult = { ok: true } | { ok: false; reason: 'quota' | 'unavailable' };

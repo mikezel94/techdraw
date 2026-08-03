@@ -13,6 +13,8 @@ import type { Camera } from '../lib/camera';
 import { screenToWorld, snapPointToGrid, getGridStep, clampZoom } from '../lib/camera';
 import { drawDimension, hitDimension, bboxOfDimension, DIM_OFFSET } from '../lib/dimensions';
 import { fitLabelFontSize, LABEL_FONT_FAMILY, LABEL_PAD } from '../lib/labelFont';
+import type { MeasurementSettings } from '../lib/units';
+import { DEFAULT_MEASUREMENT, scaleBarSpec } from '../lib/units';
 
 export const STROKE = '#1e1e1e';
 const SELECT_COLOR = '#4a90d9';
@@ -51,6 +53,7 @@ interface CanvasProps {
   gridSize: number;
   spaceHeld: boolean;
   extendPreview: ExtendPreview | null;
+  measurement: MeasurementSettings;
   onDraftChange: (draft: Element | null) => void;
   onCommit: (el: Element) => void;
   onSelect: (ids: Set<string>) => void;
@@ -359,7 +362,12 @@ function drawShapeText(
   ctx.restore();
 }
 
-export function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements: Element[]): void {
+export function drawElement(
+  ctx: CanvasRenderingContext2D,
+  el: Element,
+  elements: Element[],
+  measurement: MeasurementSettings = DEFAULT_MEASUREMENT,
+): void {
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -431,7 +439,7 @@ export function drawElement(ctx: CanvasRenderingContext2D, el: Element, elements
       ctx.fillText(el.text, el.x, el.y);
       break;
     case 'dimension':
-      drawDimension(ctx, el, elements);
+      drawDimension(ctx, el, elements, measurement);
       break;
   }
 }
@@ -564,6 +572,49 @@ function drawExtendPreview(ctx: CanvasRenderingContext2D, p: ExtendPreview): voi
   ctx.restore();
 }
 
+const SCALE_BAR_MARGIN = 16;
+const SCALE_BAR_BOTTOM = 72;
+const SCALE_BAR_TICK = 5;
+const SCALE_BAR_COLOR = '#444444';
+
+// Screen-space reference ruler in the bottom-left corner, drawn above the
+// zoom controls. The labeled length tracks the current zoom and px-to-unit
+// scale so printed drawings can be measured against it.
+function drawScaleBar(
+  ctx: CanvasRenderingContext2D,
+  height: number,
+  zoom: number,
+  measurement: MeasurementSettings,
+) {
+  const spec = scaleBarSpec(zoom, measurement);
+  // Half-pixel offsets keep the 1px strokes crisp instead of 50%-alpha blur.
+  const x = SCALE_BAR_MARGIN + 0.5;
+  const y = height - SCALE_BAR_BOTTOM + 0.5;
+
+  ctx.save();
+  // Knockout keeps the bar legible over grid lines and drawing content.
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.fillRect(x - 8, y - 24, spec.lengthPx + 16, SCALE_BAR_TICK * 2 + 12);
+
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = SCALE_BAR_COLOR;
+  ctx.fillText(spec.label, x + spec.lengthPx / 2, y - 6);
+
+  ctx.strokeStyle = SCALE_BAR_COLOR;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + spec.lengthPx, y);
+  ctx.moveTo(x, y - SCALE_BAR_TICK);
+  ctx.lineTo(x, y + SCALE_BAR_TICK);
+  ctx.moveTo(x + spec.lengthPx, y - SCALE_BAR_TICK);
+  ctx.lineTo(x + spec.lengthPx, y + SCALE_BAR_TICK);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // ---------------------------------------------------------------------------
 // Shape creation helpers
 // ---------------------------------------------------------------------------
@@ -637,6 +688,7 @@ export default function Canvas({
   gridSize,
   spaceHeld,
   extendPreview,
+  measurement,
   onDraftChange,
   onCommit,
   onSelect,
@@ -712,10 +764,10 @@ export default function Canvas({
       }
 
       for (const el of elements) {
-        drawElement(ctx, el, elements);
+        drawElement(ctx, el, elements, measurement);
       }
       if (draft) {
-        drawElement(ctx, draft, elements);
+        drawElement(ctx, draft, elements, measurement);
       }
       if (snapHint) {
         const target = elements.find((e) => e.id === snapHint.targetId);
@@ -760,11 +812,13 @@ export default function Canvas({
         ctx.fillRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
         ctx.restore();
       }
+
+      drawScaleBar(ctx, h, camera.zoom, measurement);
     };
     render();
     window.addEventListener('resize', render);
     return () => window.removeEventListener('resize', render);
-  }, [elements, draft, selectedIds, snapHint, camera, gridEnabled, gridSize, marqueeBox, extendPreview]);
+  }, [elements, draft, selectedIds, snapHint, camera, gridEnabled, gridSize, marqueeBox, extendPreview, measurement]);
 
   // ---- Wheel zoom (non-passive to allow preventDefault) ----
   useEffect(() => {

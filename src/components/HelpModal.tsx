@@ -87,6 +87,10 @@ export default function HelpModal({ onClose }: HelpModalProps) {
             box.
           </li>
           <li>Drag an arrow&apos;s midpoint handle to bend it; double-click to straighten it.</li>
+          <li>
+            Pick a measurement unit and scale in the bottom-right panel: dimension labels and the
+            scale bar show real-world sizes.
+          </li>
         </ul>
         <p className="help-links">
           Source, issues and documentation:{' '}
