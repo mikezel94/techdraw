@@ -74,3 +74,4 @@ What follows from this decision — benefits, costs, and new constraints.
 | [0007](./0007-grouping-via-shared-groupid.md) | Grouping via a shared groupId on elements | Accepted | 2026-08-02 |
 | [0008](./0008-hand-rolled-onboarding-overlay.md) | Hand-rolled onboarding overlay | Accepted | 2026-08-03 |
 | [0009](./0009-example-drawing-static-asset.md) | Example drawing as a static `.tdraw`-format asset | Accepted | 2026-08-03 |
+| [0010](./0010-static-seo-assets-and-playwright-image-generation.md) | Static SEO assets and Playwright-generated social images | Accepted | 2026-08-03 |
