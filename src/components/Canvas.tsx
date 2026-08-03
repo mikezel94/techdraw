@@ -657,7 +657,12 @@ export default function Canvas({
   const endpointRef = useRef<{ id: string; end: 'start' | 'end'; moved: boolean } | null>(null);
   const bendRef = useRef<{ id: string; moved: boolean } | null>(null);
   const panRef = useRef<{ startX: number; startY: number; camX: number; camY: number } | null>(null);
-  const marqueeRef = useRef<{ startWorld: Point; currentWorld: Point } | null>(null);
+  const marqueeRef = useRef<{
+    startWorld: Point;
+    currentWorld: Point;
+    additive: boolean;
+    baseIds: Set<string>;
+  } | null>(null);
   const pendingDimRef = useRef<Point | null>(null);
   const lastClickRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
   const cameraRef = useRef(camera);
@@ -877,8 +882,16 @@ export default function Canvas({
         }
       } else {
         canvasRef.current?.setPointerCapture(e.pointerId);
-        if (!e.shiftKey) onSelect(new Set());
-        marqueeRef.current = { startWorld: p, currentWorld: p };
+        // Shift-drag adds the marquee result to the current selection; a plain
+        // drag replaces it.
+        const additive = e.shiftKey;
+        if (!additive) onSelect(new Set());
+        marqueeRef.current = {
+          startWorld: p,
+          currentWorld: p,
+          additive,
+          baseIds: additive ? new Set(selectedIds) : new Set(),
+        };
         setMarqueeBox({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       }
       return;
@@ -1124,11 +1137,16 @@ export default function Canvas({
         const hits = new Set<string>();
         for (const el of elements) {
           const b = bboxOf(el, elements);
-          if (b.x >= minX && b.y >= minY && b.x + b.w <= maxX && b.y + b.h <= maxY) {
+          // Select anything whose bounds intersect the marquee rectangle.
+          if (b.x <= maxX && b.x + b.w >= minX && b.y <= maxY && b.y + b.h >= minY) {
             hits.add(el.id);
           }
         }
-        onSelect(hits);
+        onSelect(
+          marqueeRef.current.additive
+            ? new Set([...marqueeRef.current.baseIds, ...hits])
+            : hits,
+        );
       }
 
       marqueeRef.current = null;
